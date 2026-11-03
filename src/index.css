@@ -1,1 +1,157 @@
 @import "tailwindcss";
+
+@theme {
+  --color-dc-dark: #1e1f22;
+  --color-dc-darker: #1a1b1e;
+  --color-dc-sidebar: #2b2d31;
+  --color-dc-channel: #313338;
+  --color-dc-chat: #313338;
+  --color-dc-member: #2b2d31;
+  --color-dc-input: #383a40;
+  --color-dc-hover: #35373c;
+  --color-dc-active: #404249;
+  --color-dc-text: #dbdee1;
+  --color-dc-text-muted: #949ba4;
+  --color-dc-text-link: #00a8fc;
+  --color-dc-brand: #5865f2;
+  --color-dc-brand-hover: #4752c4;
+  --color-dc-green: #23a559;
+  --color-dc-yellow: #f0b232;
+  --color-dc-red: #da373c;
+  --color-dc-divider: #3f4147;
+  --color-dc-server-bg: #1e1f22;
+  --color-dc-popout: #232428;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html, body, #root {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  font-family: 'gg sans', 'Noto Sans', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+  background-color: #313338;
+  color: #dbdee1;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #1a1b1e;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #111214;
+}
+
+/* Animations */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slideInLeft {
+  from { opacity: 0; transform: translateX(-20px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes slideInRight {
+  from { opacity: 0; transform: translateX(20px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes pulse-ring {
+  0% { box-shadow: 0 0 0 0 rgba(35, 165, 89, 0.7); }
+  70% { box-shadow: 0 0 0 6px rgba(35, 165, 89, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(35, 165, 89, 0); }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.3s ease-out;
+}
+
+.animate-slide-left {
+  animation: slideInLeft 0.3s ease-out;
+}
+
+.animate-slide-right {
+  animation: slideInRight 0.3s ease-out;
+}
+
+.speaking-indicator {
+  animation: pulse-ring 1.5s infinite;
+}
+
+/* Tooltip */
+.tooltip-container {
+  position: relative;
+}
+
+.tooltip-container .tooltip {
+  visibility: hidden;
+  opacity: 0;
+  position: absolute;
+  z-index: 999;
+  transition: all 0.15s ease;
+}
+
+.tooltip-container:hover .tooltip {
+  visibility: visible;
+  opacity: 1;
+}
+
+/* Message hover */
+.message-row:hover {
+  background-color: #2e3035;
+}
+
+.message-row:hover .message-actions {
+  display: flex;
+}
+
+/* Input focus */
+input:focus, textarea:focus {
+  outline: none;
+}
+
+/* Channel hover */
+.channel-item:hover {
+  background-color: #35373c;
+}
+
+.channel-item.active {
+  background-color: #404249;
+  color: #ffffff;
+}
+
+/* Server icon hover */
+.server-icon-wrapper:hover .server-icon,
+.server-icon-wrapper.active .server-icon {
+  border-radius: 35%;
+}
+
+.server-icon-wrapper .server-icon {
+  transition: border-radius 0.2s ease, background-color 0.2s ease;
+}
+
+.server-icon-wrapper:hover .server-pill,
+.server-icon-wrapper.active .server-pill {
+  height: 40px !important;
+}
+
+.server-icon-wrapper .server-pill {
+  transition: height 0.2s ease;
+}

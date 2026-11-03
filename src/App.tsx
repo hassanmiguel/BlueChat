@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useAuthStore } from './stores/authStore';
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
@@ -6,6 +6,15 @@ import ServerSidebar from './components/ServerSidebar';
 import ChannelSidebar from './components/ChannelSidebar';
 import ChatArea from './components/ChatArea';
 import MemberSidebar from './components/MemberSidebar';
+import SettingsModal from './components/SettingsModal';
+import ProfilePopup from './components/ProfilePopup';
+import CreateServerModal from './components/CreateServerModal';
+import InviteModal from './components/InviteModal';
+import SearchModal from './components/SearchModal';
+import ThreadPanel from './components/ThreadPanel';
+import Notifications from './components/Notifications';
+import KeyboardShortcuts from './components/KeyboardShortcuts';
+import QuickSwitcher from './components/QuickSwitcher';
 import { motion, AnimatePresence } from 'framer-motion';
 
 export default function App() {
@@ -30,8 +39,21 @@ export default function App() {
         {/* Center: Chat Area */}
         <ChatArea />
         
+        {/* Thread Panel (conditional) */}
+        <ThreadPanel />
+        
         {/* Far Right: Members */}
         <MemberSidebar />
+
+        {/* Modals & Overlays */}
+        <SettingsModal />
+        <ProfilePopup />
+        <CreateServerModal />
+        <InviteModal />
+        <SearchModal />
+        <KeyboardShortcuts />
+        <QuickSwitcher />
+        <Notifications />
       </motion.div>
     );
   }

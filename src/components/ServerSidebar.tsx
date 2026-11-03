@@ -1,10 +1,12 @@
 import { motion } from 'framer-motion';
 import { useChatStore } from '../stores/chatStore';
 import { useAuthStore } from '../stores/authStore';
+import { useUIStore } from '../stores/uiStore';
 import { Plus, Compass, MessageCircle } from 'lucide-react';
 
 export default function ServerSidebar() {
   const { servers, activeServerId, setActiveServer, setView, view } = useChatStore();
+  const { toggleCreateServer, toggleInviteModal } = useUIStore();
   const user = useAuthStore(s => s.user);
 
   const getInitials = (name: string) => {
@@ -92,6 +94,7 @@ export default function ServerSidebar() {
         <motion.button
           whileHover={{ scale: 1.05 }}
           whileTap={{ scale: 0.95 }}
+          onClick={toggleCreateServer}
           className="server-icon w-12 h-12 rounded-[50%] bg-dc-sidebar flex items-center justify-center text-dc-green hover:bg-dc-green hover:text-white hover:rounded-[35%] transition-all"
         >
           <Plus className="w-6 h-6" />

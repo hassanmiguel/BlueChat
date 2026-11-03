@@ -2,12 +2,15 @@ import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useChatStore } from '../stores/chatStore';
 import { useAuthStore } from '../stores/authStore';
-import { Hash, Megaphone, BookOpen, Volume2, Pin, Users, Search, PlusCircle, Gift, Sticker, Smile, Send } from 'lucide-react';
+import { Hash, Megaphone, BookOpen, Volume2, Pin, Users, Search, PlusCircle, Gift, Sticker, Smile, Send, MessageSquare, UserPlus } from 'lucide-react';
+import { useUIStore } from '../stores/uiStore';
 import { Message } from '../types';
+import TypingIndicator from './TypingIndicator';
 
 
 export default function ChatArea() {
   const { messages, activeChannelId, activeServerId, servers, sendMessage, addReaction, deleteMessage, editMessage, activeDmId, directMessages, view } = useChatStore();
+  const { toggleThreadPanel, toggleInviteModal, toggleSearchModal, openProfile } = useUIStore();
   const [messageInput, setMessageInput] = useState('');
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -123,6 +126,9 @@ export default function ChatArea() {
           <div ref={messagesEndRef} />
         </div>
 
+        {/* Typing Indicator */}
+        <TypingIndicator />
+
         {/* Input */}
         <MessageInput
           messageInput={messageInput}
@@ -170,17 +176,33 @@ export default function ChatArea() {
             <p className="text-sm text-dc-text-muted truncate">{channel.topic}</p>
           </>
         )}
-        <div className="ml-auto flex items-center gap-2">
+        <div className="ml-auto flex items-center gap-1">
+          <button 
+            onClick={toggleThreadPanel}
+            className="p-1.5 rounded hover:bg-dc-active text-dc-text-muted hover:text-dc-text transition-colors"
+            title="Threads"
+          >
+            <MessageSquare className="w-5 h-5" />
+          </button>
+          <button 
+            onClick={toggleInviteModal}
+            className="p-1.5 rounded hover:bg-dc-active text-dc-text-muted hover:text-dc-text transition-colors"
+            title="Invite"
+          >
+            <UserPlus className="w-5 h-5" />
+          </button>
           <button 
             onClick={() => setShowPins(!showPins)}
             className="p-1.5 rounded hover:bg-dc-active text-dc-text-muted hover:text-dc-text transition-colors"
+            title="Pinned Messages"
           >
             <Pin className="w-5 h-5" />
           </button>
-          <button className="p-1.5 rounded hover:bg-dc-active text-dc-text-muted hover:text-dc-text transition-colors">
-            <Users className="w-5 h-5" />
-          </button>
-          <button className="p-1.5 rounded hover:bg-dc-active text-dc-text-muted hover:text-dc-text transition-colors">
+          <button 
+            onClick={toggleSearchModal}
+            className="p-1.5 rounded hover:bg-dc-active text-dc-text-muted hover:text-dc-text transition-colors"
+            title="Search"
+          >
             <Search className="w-5 h-5" />
           </button>
         </div>
@@ -250,6 +272,9 @@ export default function ChatArea() {
         <div ref={messagesEndRef} />
       </div>
 
+      {/* Typing Indicator */}
+      <TypingIndicator />
+
       {/* Message Input */}
       <MessageInput
         messageInput={messageInput}
@@ -285,6 +310,7 @@ interface MessageRowProps {
 }
 
 function MessageRow({ message, isCurrentUser, showAvatar, onReply, onEdit, onDelete, onReaction, showEmojiPicker, toggleEmojiPicker, quickEmojis, formatTime, editingId, editContent, setEditContent, handleEdit, setEditingId }: MessageRowProps) {
+  const { openProfile } = useUIStore();
   const statusColors: Record<string, string> = {
     online: 'bg-dc-green',
     idle: 'bg-dc-yellow',
@@ -348,7 +374,10 @@ function MessageRow({ message, isCurrentUser, showAvatar, onReply, onEdit, onDel
         <div className="shrink-0 w-10">
           {showAvatar && (
             <div className="relative">
-              <div className="w-10 h-10 rounded-full bg-dc-brand flex items-center justify-center text-white text-sm font-bold cursor-pointer hover:opacity-80 transition-opacity">
+              <div 
+                onClick={() => openProfile(message.author.id)}
+                className="w-10 h-10 rounded-full bg-dc-brand flex items-center justify-center text-white text-sm font-bold cursor-pointer hover:opacity-80 transition-opacity"
+              >
                 {message.author.username[0].toUpperCase()}
               </div>
               <div className={`absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full border-[3px] border-dc-chat ${statusColors[message.author.status] || statusColors.online}`}></div>
@@ -360,7 +389,12 @@ function MessageRow({ message, isCurrentUser, showAvatar, onReply, onEdit, onDel
         <div className="flex-1 min-w-0">
           {showAvatar && (
             <div className="flex items-center gap-2 mb-0.5">
-              <span className="font-medium text-white hover:underline cursor-pointer">{message.author.username}</span>
+              <span 
+                onClick={() => openProfile(message.author.id)}
+                className="font-medium text-white hover:underline cursor-pointer"
+              >
+                {message.author.username}
+              </span>
               <span className="text-xs text-dc-text-muted">
                 {formatTime(message.timestamp)}
               </span>

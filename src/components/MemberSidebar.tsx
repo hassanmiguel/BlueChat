@@ -1,8 +1,10 @@
 import { useChatStore } from '../stores/chatStore';
+import { useUIStore } from '../stores/uiStore';
 import { Crown, Shield, Code } from 'lucide-react';
 
 export default function MemberSidebar() {
   const { servers, activeServerId, view } = useChatStore();
+  const { openProfile } = useUIStore();
   const activeServer = servers.find(s => s.id === activeServerId);
 
   if (view !== 'server' || !activeServer) return null;
@@ -40,6 +42,7 @@ export default function MemberSidebar() {
   const renderMember = (member: typeof activeServer.members[0]) => (
     <div
       key={member.userId}
+      onClick={() => openProfile(member.userId)}
       className="flex items-center gap-3 px-2 py-1.5 rounded hover:bg-dc-hover cursor-pointer transition-colors group"
     >
       <div className="relative shrink-0">

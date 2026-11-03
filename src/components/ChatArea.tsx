@@ -9,8 +9,8 @@ import TypingIndicator from './TypingIndicator';
 
 
 export default function ChatArea() {
-  const { messages, activeChannelId, activeServerId, servers, sendMessage, addReaction, deleteMessage, editMessage, activeDmId, directMessages, view } = useChatStore();
-  const { toggleThreadPanel, toggleInviteModal, toggleSearchModal, openProfile } = useUIStore();
+  const { messages, activeChannelId, activeServerId, servers, sendMessage, addReaction, deleteMessage, editMessage, activeDmId, directMessages, view, setView } = useChatStore();
+  const { toggleThreadPanel, toggleInviteModal, toggleSearchModal, openProfile, toggleCreateServer } = useUIStore();
   const [messageInput, setMessageInput] = useState('');
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -146,17 +146,45 @@ export default function ChatArea() {
   if (!channel) {
     return (
       <div className="flex-1 flex items-center justify-center bg-dc-chat">
-        <div className="text-center">
-          <Hash className="w-16 h-16 text-dc-text-muted mx-auto mb-4" />
-          <h2 className="text-xl font-bold text-white mb-2">No Channel Selected</h2>
-          <p className="text-dc-text-muted">Select a channel from the sidebar to start chatting</p>
+        <div className="text-center max-w-md">
+          <div className="w-20 h-20 bg-dc-brand rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-lg shadow-dc-brand/30">
+            <svg className="w-10 h-10 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+            </svg>
+          </div>
+          <h2 className="text-2xl font-bold text-white mb-2">Welcome to blueChat!</h2>
+          <p className="text-dc-text-muted mb-6">
+            {servers.length === 0 
+              ? "You haven't joined any servers yet. Create one or join a friend's server to get started!"
+              : "Select a channel from the sidebar to start chatting"
+            }
+          </p>
+          {servers.length === 0 && (
+            <div className="flex gap-3 justify-center">
+              <button 
+                onClick={toggleCreateServer}
+                className="px-6 py-2.5 bg-dc-brand hover:bg-dc-brand-hover text-white font-medium rounded-lg transition-colors"
+              >
+                Create a Server
+              </button>
+              <button 
+                onClick={() => setView('friends')}
+                className="px-6 py-2.5 bg-dc-input hover:bg-dc-active text-white font-medium rounded-lg transition-colors"
+              >
+                Add Friends
+              </button>
+            </div>
+          )}
         </div>
       </div>
     );
   }
 
+  // At this point channel is defined
+  const activeChannel = channel;
+
   const getChannelHeaderIcon = () => {
-    switch (channel.type) {
+    switch (activeChannel.type) {
       case 'text': return <Hash className="w-6 h-6 text-dc-text-muted" />;
       case 'voice': return <Volume2 className="w-6 h-6 text-dc-text-muted" />;
       case 'announcement': return <Megaphone className="w-6 h-6 text-dc-text-muted" />;
@@ -169,11 +197,11 @@ export default function ChatArea() {
       {/* Channel Header */}
       <div className="h-12 px-4 flex items-center border-b border-dc-divider/30 shadow-sm shrink-0">
         {getChannelHeaderIcon()}
-        <h3 className="font-bold text-white ml-2">{channel.name}</h3>
-        {channel.topic && (
+        <h3 className="font-bold text-white ml-2">{activeChannel.name}</h3>
+        {activeChannel.topic && (
           <>
             <div className="w-px h-6 bg-dc-divider mx-3"></div>
-            <p className="text-sm text-dc-text-muted truncate">{channel.topic}</p>
+            <p className="text-sm text-dc-text-muted truncate">{activeChannel.topic}</p>
           </>
         )}
         <div className="ml-auto flex items-center gap-1">
@@ -244,8 +272,8 @@ export default function ChatArea() {
           <div className="w-16 h-16 rounded-full bg-dc-active flex items-center justify-center mb-3">
             {getChannelHeaderIcon()}
           </div>
-          <h2 className="text-2xl font-bold text-white mb-1">Welcome to #{channel.name}!</h2>
-          <p className="text-dc-text-muted">This is the start of the #{channel.name} channel. {channel.topic}</p>
+          <h2 className="text-2xl font-bold text-white mb-1">Welcome to #{activeChannel.name}!</h2>
+          <p className="text-dc-text-muted">This is the start of the #{activeChannel.name} channel. {activeChannel.topic}</p>
         </div>
 
         {currentMessages.map((msg, i) => (
@@ -283,7 +311,7 @@ export default function ChatArea() {
         handleSend={handleSend}
         replyingTo={replyingTo}
         setReplyingTo={setReplyingTo}
-        channelName={channel.name}
+        channelName={activeChannel.name}
       />
     </div>
   );

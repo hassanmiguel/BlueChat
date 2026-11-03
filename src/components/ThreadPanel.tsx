@@ -17,44 +17,8 @@ export default function ThreadPanel() {
   const [reply, setReply] = useState('');
   const [activeThread, setActiveThread] = useState<string | null>(null);
 
-  // Mock threads
-  const threads: Thread[] = [
-    {
-      id: 't1',
-      title: 'React vs Vue Discussion',
-      author: 'DevMaster',
-      messageCount: 12,
-      lastActivity: '5 min ago',
-      messages: [
-        { id: 'm1', author: 'DevMaster', content: 'What do you all prefer for new projects?', time: '2:30 PM' },
-        { id: 'm2', author: 'BlueAdmin', content: 'React for sure! The ecosystem is unmatched.', time: '2:32 PM' },
-        { id: 'm3', author: 'PixelArtist', content: 'I like Vue for its simplicity', time: '2:35 PM' },
-        { id: 'm4', author: 'NightOwl', content: 'Svelte gang 🚀', time: '2:40 PM' },
-      ]
-    },
-    {
-      id: 't2',
-      title: 'Weekend Game Night',
-      author: 'GameLover',
-      messageCount: 8,
-      lastActivity: '1 hour ago',
-      messages: [
-        { id: 'm5', author: 'GameLover', content: 'Who is up for games this Saturday?', time: '1:00 PM' },
-        { id: 'm6', author: 'CloudNine', content: 'Count me in!', time: '1:05 PM' },
-      ]
-    },
-    {
-      id: 't3',
-      title: 'Design Feedback - New Logo',
-      author: 'PixelArtist',
-      messageCount: 5,
-      lastActivity: '3 hours ago',
-      messages: [
-        { id: 'm7', author: 'PixelArtist', content: 'Here is my proposal for the new logo', time: '11:00 AM' },
-        { id: 'm8', author: 'BlueAdmin', content: 'Looks great! Maybe try a darker shade?', time: '11:15 AM' },
-      ]
-    },
-  ];
+  // Threads will be loaded from the backend
+  const threads: Thread[] = [];
 
   const currentThread = threads.find(t => t.id === activeThread);
 

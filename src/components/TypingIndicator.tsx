@@ -1,36 +1,29 @@
 import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useChatStore } from '../stores/chatStore';
 
 export default function TypingIndicator() {
   const [typingUsers, setTypingUsers] = useState<string[]>([]);
   const [visible, setVisible] = useState(false);
+  const activeChannelId = useChatStore(s => s.activeChannelId);
 
-  // Simulate random typing indicators
+  // In a real app, this would listen to socket events
+  // For now, we just show the component structure
   useEffect(() => {
-    const users = ['DevMaster', 'PixelArtist', 'NightOwl', 'CloudNine', 'GameLover'];
-    
-    const interval = setInterval(() => {
-      const shouldType = Math.random() > 0.6;
-      if (shouldType) {
-        const randomUser = users[Math.floor(Math.random() * users.length)];
-        setTypingUsers([randomUser]);
-        setVisible(true);
-        
-        setTimeout(() => {
-          setVisible(false);
-          setTimeout(() => setTypingUsers([]), 300);
-        }, 2000 + Math.random() * 3000);
-      }
-    }, 8000);
-
-    return () => clearInterval(interval);
-  }, []);
+    // This would be replaced with socket event listeners
+    // socketService.on('typing:update', handleTypingUpdate);
+    return () => {
+      // socketService.off('typing:update', handleTypingUpdate);
+    };
+  }, [activeChannelId]);
 
   if (!visible || typingUsers.length === 0) return null;
 
   const text = typingUsers.length === 1
     ? `${typingUsers[0]} is typing...`
-    : `${typingUsers.join(', ')} are typing...`;
+    : typingUsers.length === 2
+    ? `${typingUsers[0]} and ${typingUsers[1]} are typing...`
+    : `${typingUsers.slice(0, 3).join(', ')} are typing...`;
 
   return (
     <AnimatePresence>

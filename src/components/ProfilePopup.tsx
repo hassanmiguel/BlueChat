@@ -10,8 +10,12 @@ export default function ProfilePopup() {
   const profileUser = allUsers.find(u => u.id === profileUserId);
   const activeServer = servers.find(s => s.id === activeServerId);
   const member = activeServer?.members.find(m => m.userId === profileUserId);
+  const currentUser = useAuthStore(s => s.user);
 
-  if (!profileUser) return null;
+  // If no profile user found in allUsers, check if it's the current user
+  const displayUser = profileUser || (profileUserId === currentUser?.id ? currentUser : null);
+  
+  if (!displayUser) return null;
 
   const statusColors: Record<string, string> = {
     online: 'bg-dc-green',

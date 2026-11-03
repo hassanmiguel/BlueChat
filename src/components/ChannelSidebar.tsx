@@ -207,22 +207,16 @@ export default function ChannelSidebar() {
                         </div>
                       </button>
                       {/* Show connected users in voice channel */}
-                      {channel.type === 'voice' && isInVoice && voiceChannelId === channel.id && (
+                      {channel.type === 'voice' && isInVoice && voiceChannelId === channel.id && user && (
                         <div className="ml-6 mt-0.5 space-y-0.5">
-                          {[
-                            { name: 'DevMaster', speaking: true },
-                            { name: 'MusicBot', speaking: false },
-                          ].map(u => (
-                            <div key={u.name} className="flex items-center gap-1.5 py-0.5">
-                              <div className={`w-5 h-5 rounded-full bg-dc-brand flex items-center justify-center text-white text-[10px] font-bold ${u.speaking ? 'speaking-indicator' : ''}`}>
-                                {u.name[0]}
-                              </div>
-                              <span className="text-xs text-dc-text-muted">{u.name}</span>
+                          <div className="flex items-center gap-1.5 py-0.5">
+                            <div className="w-5 h-5 rounded-full bg-dc-brand flex items-center justify-center text-white text-[10px] font-bold">
+                              {user.username[0]}
                             </div>
-                          ))}
+                            <span className="text-xs text-dc-text-muted">{user.username} (You)</span>
+                          </div>
                         </div>
-                      )}
-                    </div>
+                      )}                    </div>
                   ))}
                 </motion.div>
               )}

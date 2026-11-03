@@ -1,0 +1,461 @@
+// Prisma Schema for blueChat
+// PostgreSQL database schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============ USER ============
+model User {
+  id            String    @id @default(cuid())
+  username      String    @unique
+  discriminator String    @default("0001")
+  email         String    @unique
+  password      String
+  avatar        String?
+  banner        String?
+  bio           String?   @db.Text
+  pronouns      String?
+  status        UserStatus @default(ONLINE)
+  customStatus  String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  lastSeen      DateTime  @default(now())
+
+  // Relations
+  servers       ServerMember[]
+  ownedServers  Server[]       @relation("ServerOwner")
+  messages      Message[]
+  reactions     Reaction[]
+  roles         RoleMember[]
+  sentRequests  FriendRequest[] @relation("SentRequests")
+  receivedRequests FriendRequest[] @relation("ReceivedRequests")
+  blocks        Block[]         @relation("Blocker")
+  blockedBy     Block[]         @relation("Blocked")
+  directMessages DirectMessageParticipant[]
+  sessions      Session[]
+  auditLogs     AuditLog[]
+  bans          Ban[]
+  timeouts      Timeout[]
+
+  @@map("users")
+}
+
+enum UserStatus {
+  ONLINE
+  IDLE
+  DND
+  INVISIBLE
+  OFFLINE
+}
+
+// ============ SESSION ============
+model Session {
+  id        String   @id @default(cuid())
+  userId    String
+  token     String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+}
+
+// ============ SERVER ============
+model Server {
+  id               String   @id @default(cuid())
+  name             String
+  icon             String?
+  banner           String?
+  description      String?  @db.Text
+  inviteCode       String   @unique @default(cuid())
+  region           String   @default("us-east")
+  verificationLevel VerificationLevel @default(NONE)
+  ownerId          String
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  // Relations
+  owner            User     @relation("ServerOwner", fields: [ownerId], references: [id])
+  members          ServerMember[]
+  channels         Channel[]
+  roles            Role[]
+  categories       Category[]
+  invites          ServerInvite[]
+  auditLogs        AuditLog[]
+  bans             Ban[]
+
+  @@map("servers")
+}
+
+enum VerificationLevel {
+  NONE
+  LOW
+  MEDIUM
+  HIGH
+  VERY_HIGH
+}
+
+// ============ SERVER MEMBER ============
+model ServerMember {
+  id        String   @id @default(cuid())
+  userId    String
+  serverId  String
+  nickname  String?
+  joinedAt  DateTime @default(now())
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  server    Server   @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  roles     RoleMember[]
+
+  @@unique([userId, serverId])
+  @@map("server_members")
+}
+
+// ============ ROLE ============
+model Role {
+  id          String   @id @default(cuid())
+  name        String
+  color       String   @default("#949ba4")
+  icon        String?
+  permissions String[] @default([])
+  position    Int      @default(0)
+  serverId    String
+  createdAt   DateTime @default(now())
+
+  server      Server   @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  members     RoleMember[]
+  channelOverrides ChannelPermissionOverride[]
+
+  @@map("roles")
+}
+
+model RoleMember {
+  id     String @id @default(cuid())
+  roleId String
+  memberId String
+
+  role   Role   @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  member ServerMember @relation(fields: [memberId], references: [id], onDelete: Cascade)
+
+  @@unique([roleId, memberId])
+  @@map("role_members")
+}
+
+// ============ CATEGORY ============
+model Category {
+  id        String   @id @default(cuid())
+  name      String
+  position  Int      @default(0)
+  serverId  String
+  createdAt DateTime @default(now())
+
+  server    Server   @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  channels  Channel[]
+
+  @@map("categories")
+}
+
+// ============ CHANNEL ============
+model Channel {
+  id          String      @id @default(cuid())
+  name        String
+  type        ChannelType @default(TEXT)
+  topic       String?     @db.Text
+  position    Int         @default(0)
+  isNsfw      Boolean     @default(false)
+  slowMode    Int?        // seconds between messages
+  serverId    String
+  categoryId  String?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  server      Server      @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  category    Category?   @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  messages    Message[]
+  permissionOverrides ChannelPermissionOverride[]
+  threads     Thread[]
+
+  @@map("channels")
+}
+
+enum ChannelType {
+  TEXT
+  VOICE
+  ANNOUNCEMENT
+  FORUM
+  STAGE
+}
+
+model ChannelPermissionOverride {
+  id         String   @id @default(cuid())
+  channelId  String
+  roleId     String
+  allow      String[] @default([])
+  deny       String[] @default([])
+
+  channel    Channel  @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  role       Role     @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@unique([channelId, roleId])
+  @@map("channel_permission_overrides")
+}
+
+// ============ MESSAGE ============
+model Message {
+  id          String   @id @default(cuid())
+  content     String   @db.Text
+  channelId   String
+  authorId    String
+  replyToId   String?
+  isPinned    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  deletedAt   DateTime?
+
+  channel     Channel  @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  author      User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  replyTo     Message? @relation("MessageReplies", fields: [replyToId], references: [id])
+  replies     Message[] @relation("MessageReplies")
+  attachments Attachment[]
+  reactions   Reaction[]
+  mentions    Mention[]
+  edits       MessageEdit[]
+
+  @@index([channelId, createdAt])
+  @@map("messages")
+}
+
+model MessageEdit {
+  id        String   @id @default(cuid())
+  messageId String
+  content   String   @db.Text
+  editedAt  DateTime @default(now())
+
+  message   Message  @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@map("message_edits")
+}
+
+model Attachment {
+  id        String   @id @default(cuid())
+  messageId String
+  filename  String
+  url       String
+  type      String   // image, video, file
+  size      Int
+  width     Int?
+  height    Int?
+  createdAt DateTime @default(now())
+
+  message   Message  @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@map("attachments")
+}
+
+model Reaction {
+  id        String   @id @default(cuid())
+  messageId String
+  userId    String
+  emoji     String
+  createdAt DateTime @default(now())
+
+  message   Message  @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, userId, emoji])
+  @@map("reactions")
+}
+
+model Mention {
+  id        String      @id @default(cuid())
+  messageId String
+  type      MentionType
+  targetId  String      // userId or roleId
+
+  message   Message     @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@map("mentions")
+}
+
+enum MentionType {
+  USER
+  ROLE
+  CHANNEL
+  EVERYONE
+}
+
+// ============ THREAD ============
+model Thread {
+  id          String   @id @default(cuid())
+  name        String
+  channelId   String
+  ownerId     String
+  isLocked    Boolean  @default(false)
+  isArchived  Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  channel     Channel  @relation(fields: [channelId], references: [id], onDelete: Cascade)
+
+  @@map("threads")
+}
+
+// ============ DIRECT MESSAGE ============
+model DirectMessage {
+  id        String   @id @default(cuid())
+  isGroup   Boolean  @default(false)
+  name      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  participants DirectMessageParticipant[]
+  messages     DirectMessageMessage[]
+
+  @@map("direct_messages")
+}
+
+model DirectMessageParticipant {
+  id     String @id @default(cuid())
+  dmId   String
+  userId String
+
+  dm     DirectMessage @relation(fields: [dmId], references: [id], onDelete: Cascade)
+  user   User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([dmId, userId])
+  @@map("dm_participants")
+}
+
+model DirectMessageMessage {
+  id        String   @id @default(cuid())
+  content   String   @db.Text
+  dmId      String
+  authorId  String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  dm        DirectMessage @relation(fields: [dmId], references: [id], onDelete: Cascade)
+
+  @@index([dmId, createdAt])
+  @@map("dm_messages")
+}
+
+// ============ FRIEND SYSTEM ============
+model FriendRequest {
+  id          String         @id @default(cuid())
+  senderId    String
+  receiverId  String
+  status      FriendStatus   @default(PENDING)
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  sender      User           @relation("SentRequests", fields: [senderId], references: [id], onDelete: Cascade)
+  receiver    User           @relation("ReceivedRequests", fields: [receiverId], references: [id], onDelete: Cascade)
+
+  @@unique([senderId, receiverId])
+  @@map("friend_requests")
+}
+
+enum FriendStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
+  BLOCKED
+}
+
+model Block {
+  id        String   @id @default(cuid())
+  blockerId String
+  blockedId String
+  createdAt DateTime @default(now())
+
+  blocker   User     @relation("Blocker", fields: [blockerId], references: [id], onDelete: Cascade)
+  blocked   User     @relation("Blocked", fields: [blockedId], references: [id], onDelete: Cascade)
+
+  @@unique([blockerId, blockedId])
+  @@map("blocks")
+}
+
+// ============ SERVER INVITE ============
+model ServerInvite {
+  id          String   @id @default(cuid())
+  code        String   @unique @default(cuid())
+  serverId    String
+  creatorId   String
+  maxUses     Int?
+  uses        Int      @default(0)
+  expiresAt   DateTime?
+  createdAt   DateTime @default(now())
+
+  server      Server   @relation(fields: [serverId], references: [id], onDelete: Cascade)
+
+  @@map("server_invites")
+}
+
+// ============ MODERATION ============
+model Ban {
+  id        String   @id @default(cuid())
+  serverId  String
+  userId    String
+  reason    String?  @db.Text
+  bannedById String
+  createdAt DateTime @default(now())
+
+  server    Server   @relation(fields: [serverId], references: [id], onDelete: Cascade)
+
+  @@unique([serverId, userId])
+  @@map("bans")
+}
+
+model Timeout {
+  id        String   @id @default(cuid())
+  serverId  String
+  userId    String
+  reason    String?
+  expiresAt DateTime
+  createdById String
+  createdAt DateTime @default(now())
+
+  @@unique([serverId, userId])
+  @@map("timeouts")
+}
+
+model AuditLog {
+  id        String      @id @default(cuid())
+  serverId  String
+  userId    String
+  action    AuditAction
+  target    String?
+  metadata  Json?
+  createdAt DateTime    @default(now())
+
+  server    Server      @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  user      User        @relation(fields: [userId], references: [id])
+
+  @@index([serverId, createdAt])
+  @@map("audit_logs")
+}
+
+enum AuditAction {
+  SERVER_UPDATE
+  CHANNEL_CREATE
+  CHANNEL_UPDATE
+  CHANNEL_DELETE
+  ROLE_CREATE
+  ROLE_UPDATE
+  ROLE_DELETE
+  MEMBER_KICK
+  MEMBER_BAN
+  MEMBER_UNBAN
+  MEMBER_TIMEOUT
+  MESSAGE_DELETE
+  MESSAGE_PIN
+  INVITE_CREATE
+  INVITE_DELETE
+}

@@ -83,10 +83,7 @@ export const useUIStore = create<UIState>((set, get) => ({
   isCameraOn: false,
   isScreenSharing: false,
   isSpeaking: false,
-  voiceUsers: [
-    { userId: '2', username: 'DevMaster', isMuted: false, isSpeaking: true },
-    { userId: '4', username: 'MusicBot', isMuted: true, isSpeaking: false },
-  ],
+  voiceUsers: [],
   
   profileUserId: null,
   

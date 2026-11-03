@@ -1,9 +1,11 @@
 import { motion, AnimatePresence } from 'framer-motion';
 import { useUIStore } from '../stores/uiStore';
+import { useAuthStore } from '../stores/authStore';
 import { Mic, MicOff, Headphones, Video, VideoOff, Monitor, PhoneOff, Signal, VolumeX } from 'lucide-react';
 
 export default function VoiceControls() {
-  const { isInVoice, voiceChannelName, isMuted, isDeafened, isCameraOn, isScreenSharing, voiceUsers, toggleMute, toggleDeafen, toggleCamera, toggleScreenShare, leaveVoice } = useUIStore();
+  const { isInVoice, voiceChannelName, isMuted, isDeafened, isCameraOn, isScreenSharing, toggleMute, toggleDeafen, toggleCamera, toggleScreenShare, leaveVoice } = useUIStore();
+  const user = useAuthStore(s => s.user);
 
   return (
     <AnimatePresence>
@@ -20,15 +22,15 @@ export default function VoiceControls() {
               <Signal className="w-4 h-4 text-dc-green" />
               <span className="text-xs font-bold text-dc-green">Voice Connected</span>
             </div>
-            {voiceUsers.map(user => (
-              <div key={user.userId} className="flex items-center gap-2 px-2 py-1 rounded hover:bg-dc-hover transition-colors">
-                <div className={`w-6 h-6 rounded-full bg-dc-brand flex items-center justify-center text-white text-xs font-bold ${user.isSpeaking ? 'speaking-indicator' : ''}`}>
+            {user && (
+              <div className="flex items-center gap-2 px-2 py-1 rounded">
+                <div className="w-6 h-6 rounded-full bg-dc-brand flex items-center justify-center text-white text-xs font-bold">
                   {user.username[0]}
                 </div>
-                <span className="text-sm text-dc-text flex-1">{user.username}</span>
-                {user.isMuted && <MicOff className="w-3.5 h-3.5 text-dc-red" />}
+                <span className="text-sm text-dc-text flex-1">{user.username} (You)</span>
+                {isMuted && <MicOff className="w-3.5 h-3.5 text-dc-red" />}
               </div>
-            ))}
+            )}
           </div>
 
           {/* Controls */}

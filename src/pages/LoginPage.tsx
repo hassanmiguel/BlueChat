@@ -194,24 +194,19 @@ export default function LoginPage({ onSwitchToRegister }: LoginPageProps) {
           </p>
         </div>
 
-        {/* Demo credentials */}
+        {/* Info */}
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ delay: 0.5 }}
           className="mt-4 bg-dc-dark/50 rounded-xl p-4 border border-dc-divider/20 backdrop-blur-sm"
         >
-          <p className="text-xs text-dc-text-muted text-center mb-2 font-semibold uppercase tracking-wide">Demo Credentials</p>
-          <div className="grid grid-cols-2 gap-2 text-xs">
-            <div className="bg-dc-darker/50 rounded-lg p-2">
-              <p className="text-dc-text-muted">Email:</p>
-              <p className="text-dc-text font-mono">admin@bluechat.com</p>
-            </div>
-            <div className="bg-dc-darker/50 rounded-lg p-2">
-              <p className="text-dc-text-muted">Password:</p>
-              <p className="text-dc-text font-mono">admin123</p>
-            </div>
-          </div>
+          <p className="text-xs text-dc-text-muted text-center">
+            New to blueChat?{' '}
+            <button onClick={onSwitchToRegister} className="text-dc-text-link hover:underline font-medium">
+              Create an account
+            </button>
+          </p>
         </motion.div>
       </motion.div>
     </div>

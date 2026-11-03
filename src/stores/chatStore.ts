@@ -1,122 +1,7 @@
 import { create } from 'zustand';
 import { Server, Channel, Message, User, DirectMessage, Friend } from '../types';
-
-// Mock users
-const mockUsers: User[] = [
-  { id: '1', username: 'BlueAdmin', discriminator: '0001', email: 'admin@bluechat.com', avatar: '', bio: 'Welcome to blueChat! 🎉', status: 'online', customStatus: 'Building something awesome', createdAt: new Date('2024-01-01') },
-  { id: '2', username: 'DevMaster', discriminator: '4242', email: 'dev@bluechat.com', avatar: '', bio: 'Full-stack developer', status: 'online', customStatus: 'Coding...', createdAt: new Date('2024-02-15') },
-  { id: '3', username: 'PixelArtist', discriminator: '7777', email: 'pixel@bluechat.com', avatar: '', bio: 'Digital artist & designer', status: 'idle', createdAt: new Date('2024-03-20') },
-  { id: '4', username: 'MusicBot', discriminator: '0000', email: 'bot@bluechat.com', avatar: '', bio: '🎵 Playing your favorite tunes', status: 'online', createdAt: new Date('2024-01-01') },
-  { id: '5', username: 'NightOwl', discriminator: '3333', email: 'owl@bluechat.com', avatar: '', bio: 'Night coder 🦉', status: 'dnd', customStatus: 'Do not disturb', createdAt: new Date('2024-04-10') },
-  { id: '6', username: 'CloudNine', discriminator: '5555', email: 'cloud@bluechat.com', avatar: '', bio: 'Living on cloud nine ☁️', status: 'online', createdAt: new Date('2024-05-01') },
-  { id: '7', username: 'GameLover', discriminator: '9999', email: 'game@bluechat.com', avatar: '', bio: 'Gaming is life 🎮', status: 'idle', createdAt: new Date('2024-06-15') },
-];
-
-// Mock channels
-const generalChannels: Channel[] = [
-  { id: 'ch1', name: 'welcome', type: 'text', categoryId: 'cat1', topic: 'Welcome to the server!', isNsfw: false, position: 0 },
-  { id: 'ch2', name: 'general', type: 'text', categoryId: 'cat1', topic: 'General discussion', isNsfw: false, position: 1 },
-  { id: 'ch3', name: 'off-topic', type: 'text', categoryId: 'cat1', topic: 'Anything goes', isNsfw: false, position: 2 },
-  { id: 'ch4', name: 'announcements', type: 'announcement', categoryId: 'cat1', topic: 'Important announcements', isNsfw: false, position: 3 },
-];
-
-const devChannels: Channel[] = [
-  { id: 'ch5', name: 'help', type: 'text', categoryId: 'cat2', topic: 'Ask for help here', isNsfw: false, position: 0 },
-  { id: 'ch6', name: 'showcase', type: 'text', categoryId: 'cat2', topic: 'Show off your projects', isNsfw: false, position: 1 },
-  { id: 'ch7', name: 'resources', type: 'text', categoryId: 'cat2', topic: 'Useful links and tools', isNsfw: false, position: 2 },
-];
-
-const voiceChannels: Channel[] = [
-  { id: 'ch8', name: 'General Voice', type: 'voice', categoryId: 'cat3', isNsfw: false, position: 0 },
-  { id: 'ch9', name: 'Music', type: 'voice', categoryId: 'cat3', isNsfw: false, position: 1 },
-  { id: 'ch10', name: 'Gaming', type: 'voice', categoryId: 'cat3', isNsfw: false, position: 2 },
-];
-
-// Mock messages
-const generateMessages = (channelId: string): Message[] => {
-  const messages: Message[] = [
-    { id: `${channelId}-1`, content: 'Hey everyone! Welcome to blueChat! 🎉', author: mockUsers[0], channelId, timestamp: new Date(Date.now() - 3600000 * 5), attachments: [], reactions: [{ emoji: '🎉', count: 5, userIds: ['2', '3', '4', '5', '6'] }, { emoji: '❤️', count: 3, userIds: ['2', '3', '5'] }], isPinned: true, mentions: [] },
-    { id: `${channelId}-2`, content: 'This is awesome! Love the interface.', author: mockUsers[1], channelId, timestamp: new Date(Date.now() - 3600000 * 4), attachments: [], reactions: [{ emoji: '💯', count: 2, userIds: ['1', '3'] }], isPinned: false, mentions: [] },
-    { id: `${channelId}-3`, content: 'Has anyone tried the new features yet?', author: mockUsers[2], channelId, timestamp: new Date(Date.now() - 3600000 * 3), attachments: [], reactions: [], isPinned: false, mentions: [] },
-    { id: `${channelId}-4`, content: 'Yeah! The voice channels are working great. The latency is super low.', author: mockUsers[4], channelId, timestamp: new Date(Date.now() - 3600000 * 2), attachments: [], reactions: [{ emoji: '🔥', count: 4, userIds: ['1', '2', '3', '6'] }], isPinned: false, mentions: [] },
-    { id: `${channelId}-5`, content: '@BlueAdmin when is the next update coming?', author: mockUsers[5], channelId, timestamp: new Date(Date.now() - 3600000), attachments: [], reactions: [], isPinned: false, mentions: ['1'] },
-    { id: `${channelId}-6`, content: "We're working on forum channels and screen sharing improvements! Stay tuned 🚀", author: mockUsers[0], channelId, timestamp: new Date(Date.now() - 1800000), attachments: [], reactions: [{ emoji: '🚀', count: 7, userIds: ['2', '3', '4', '5', '6', '7', '1'] }, { emoji: '👀', count: 3, userIds: ['2', '5', '7'] }], isPinned: false, mentions: [], replyTo: { id: `${channelId}-5`, content: '@BlueAdmin when is the next update coming?', author: mockUsers[5], channelId, timestamp: new Date(Date.now() - 3600000), attachments: [], reactions: [], isPinned: false, mentions: ['1'] } },
-    { id: `${channelId}-7`, content: "```typescript\nconst blueChat = 'amazing';\nconsole.log(blueChat);\n```", author: mockUsers[1], channelId, timestamp: new Date(Date.now() - 900000), attachments: [], reactions: [{ emoji: '😂', count: 2, userIds: ['3', '5'] }], isPinned: false, mentions: [] },
-    { id: `${channelId}-8`, content: "Just finished my latest project! Check it out in #showcase", author: mockUsers[6], channelId, timestamp: new Date(Date.now() - 300000), attachments: [], reactions: [], isPinned: false, mentions: [] },
-  ];
-  return messages;
-};
-
-// Mock servers
-const mockServers: Server[] = [
-  {
-    id: 'server1',
-    name: 'blueChat HQ',
-    icon: '',
-    ownerId: '1',
-    memberCount: 1247,
-    channels: [...generalChannels, ...devChannels, ...voiceChannels],
-    roles: [
-      { id: 'role1', name: 'Admin', color: '#da373c', permissions: ['*'], position: 3 },
-      { id: 'role2', name: 'Moderator', color: '#23a559', permissions: ['kick', 'ban', 'timeout'], position: 2 },
-      { id: 'role3', name: 'Developer', color: '#5865f2', permissions: ['manage_channels'], position: 1 },
-      { id: 'role4', name: 'Member', color: '#949ba4', permissions: [], position: 0 },
-    ],
-    members: mockUsers.map(u => ({ userId: u.id, user: u, roleIds: [u.id === '1' ? 'role1' : 'role4'], joinedAt: new Date() })),
-  },
-  {
-    id: 'server2',
-    name: 'Gaming Zone',
-    icon: '',
-    ownerId: '6',
-    memberCount: 523,
-    channels: [
-      { id: 'ch20', name: 'general', type: 'text', categoryId: 'cat10', topic: 'Gaming chat', isNsfw: false, position: 0 },
-      { id: 'ch21', name: 'lfg', type: 'text', categoryId: 'cat10', topic: 'Looking for group', isNsfw: false, position: 1 },
-      { id: 'ch22', name: 'clips', type: 'text', categoryId: 'cat10', topic: 'Share your best clips', isNsfw: false, position: 2 },
-      { id: 'ch23', name: 'Game Night', type: 'voice', categoryId: 'cat11', isNsfw: false, position: 0 },
-    ],
-    roles: [
-      { id: 'role10', name: 'Owner', color: '#f0b232', permissions: ['*'], position: 2 },
-      { id: 'role11', name: 'Gamer', color: '#5865f2', permissions: [], position: 1 },
-    ],
-    members: mockUsers.slice(0, 5).map(u => ({ userId: u.id, user: u, roleIds: ['role11'], joinedAt: new Date() })),
-  },
-  {
-    id: 'server3',
-    name: 'Art & Design',
-    icon: '',
-    ownerId: '2',
-    memberCount: 891,
-    channels: [
-      { id: 'ch30', name: 'gallery', type: 'text', categoryId: 'cat20', topic: 'Share your art', isNsfw: false, position: 0 },
-      { id: 'ch31', name: 'feedback', type: 'text', categoryId: 'cat20', topic: 'Get constructive feedback', isNsfw: false, position: 1 },
-      { id: 'ch32', name: 'tutorials', type: 'forum', categoryId: 'cat20', topic: 'Share tutorials', isNsfw: false, position: 2 },
-      { id: 'ch33', name: 'Creative Studio', type: 'voice', categoryId: 'cat21', isNsfw: false, position: 0 },
-    ],
-    roles: [
-      { id: 'role20', name: 'Artist', color: '#eb459e', permissions: ['*'], position: 1 },
-      { id: 'role21', name: 'Viewer', color: '#949ba4', permissions: [], position: 0 },
-    ],
-    members: mockUsers.slice(1, 6).map(u => ({ userId: u.id, user: u, roleIds: ['role21'], joinedAt: new Date() })),
-  },
-];
-
-// Mock DMs
-const mockDMs: DirectMessage[] = [
-  { id: 'dm1', participants: [mockUsers[0], mockUsers[1]], isGroup: false, lastMessage: { id: 'dm1-1', content: 'Hey! How is the project going?', author: mockUsers[1], channelId: 'dm1', timestamp: new Date(Date.now() - 600000), attachments: [], reactions: [], isPinned: false, mentions: [] } },
-  { id: 'dm2', participants: [mockUsers[0], mockUsers[2]], isGroup: false, lastMessage: { id: 'dm2-1', content: 'Check out this design I made!', author: mockUsers[2], channelId: 'dm2', timestamp: new Date(Date.now() - 3600000), attachments: [], reactions: [], isPinned: false, mentions: [] } },
-  { id: 'dm3', participants: [mockUsers[0], mockUsers[1], mockUsers[2], mockUsers[5]], isGroup: true, name: 'Project Team', lastMessage: { id: 'dm3-1', content: 'Meeting at 3pm tomorrow', author: mockUsers[5], channelId: 'dm3', timestamp: new Date(Date.now() - 7200000), attachments: [], reactions: [], isPinned: false, mentions: [] } },
-];
-
-// Mock friends
-const mockFriends: Friend[] = [
-  { userId: '2', user: mockUsers[1], status: 'accepted' },
-  { userId: '3', user: mockUsers[2], status: 'accepted' },
-  { userId: '5', user: mockUsers[4], status: 'accepted' },
-  { userId: '6', user: mockUsers[5], status: 'pending' },
-  { userId: '7', user: mockUsers[6], status: 'incoming' },
-];
+import { api } from '../services/api';
+import { useAuthStore } from './authStore';
 
 interface ChatState {
   servers: Server[];
@@ -128,35 +13,62 @@ interface ChatState {
   friends: Friend[];
   allUsers: User[];
   view: 'server' | 'friends' | 'dm';
+  
+  // Actions
   setActiveServer: (serverId: string | null) => void;
   setActiveChannel: (channelId: string) => void;
   setActiveDm: (dmId: string) => void;
   setView: (view: 'server' | 'friends' | 'dm') => void;
+  
+  // Server actions
+  createServer: (name: string, icon?: string) => Promise<Server | null>;
+  deleteServer: (serverId: string) => Promise<boolean>;
+  joinServer: (inviteCode: string) => Promise<boolean>;
+  leaveServer: (serverId: string) => Promise<boolean>;
+  
+  // Channel actions
+  createChannel: (serverId: string, name: string, type: Channel['type']) => Promise<Channel | null>;
+  
+  // Message actions
   sendMessage: (channelId: string, content: string, author: User) => void;
   addReaction: (channelId: string, messageId: string, emoji: string, userId: string) => void;
   deleteMessage: (channelId: string, messageId: string) => void;
   editMessage: (channelId: string, messageId: string, content: string) => void;
+  
+  // DM actions
+  createDirectMessage: (userId: string, user: User) => void;
+  
+  // Friend actions
+  sendFriendRequest: (username: string) => Promise<boolean>;
+  acceptFriend: (userId: string) => void;
+  removeFriend: (userId: string) => void;
+  
+  // Data loading
+  loadFromStorage: () => void;
+  saveToStorage: () => void;
 }
 
+// Load persisted data
+const loadPersistedData = () => {
+  try {
+    const data = localStorage.getItem('bluechat_data');
+    if (data) return JSON.parse(data);
+  } catch (e) {}
+  return null;
+};
+
+const persisted = loadPersistedData();
+
 export const useChatStore = create<ChatState>((set, get) => ({
-  servers: mockServers,
-  activeServerId: 'server1',
-  activeChannelId: 'ch2',
-  activeDmId: null,
-  messages: {
-    'ch1': generateMessages('ch1'),
-    'ch2': generateMessages('ch2'),
-    'ch3': generateMessages('ch3'),
-    'ch5': generateMessages('ch5'),
-    'ch6': generateMessages('ch6'),
-    'dm1': [{ id: 'dm1-1', content: 'Hey! How is the project going?', author: mockUsers[1], channelId: 'dm1', timestamp: new Date(Date.now() - 600000), attachments: [], reactions: [], isPinned: false, mentions: [] }],
-    'dm2': [{ id: 'dm2-1', content: 'Check out this design I made!', author: mockUsers[2], channelId: 'dm2', timestamp: new Date(Date.now() - 3600000), attachments: [], reactions: [], isPinned: false, mentions: [] }],
-    'dm3': [{ id: 'dm3-1', content: 'Meeting at 3pm tomorrow', author: mockUsers[5], channelId: 'dm3', timestamp: new Date(Date.now() - 7200000), attachments: [], reactions: [], isPinned: false, mentions: [] }],
-  },
-  directMessages: mockDMs,
-  friends: mockFriends,
-  allUsers: mockUsers,
-  view: 'server',
+  servers: persisted?.servers || [],
+  activeServerId: persisted?.activeServerId || null,
+  activeChannelId: persisted?.activeChannelId || null,
+  activeDmId: persisted?.activeDmId || null,
+  messages: persisted?.messages || {},
+  directMessages: persisted?.directMessages || [],
+  friends: persisted?.friends || [],
+  allUsers: persisted?.allUsers || [],
+  view: 'friends',
 
   setActiveServer: (serverId) => {
     const server = get().servers.find(s => s.id === serverId);
@@ -167,23 +79,136 @@ export const useChatStore = create<ChatState>((set, get) => ({
       activeDmId: null,
       view: 'server',
     });
+    get().saveToStorage();
   },
 
   setActiveChannel: (channelId) => {
     set({ activeChannelId: channelId, view: 'server' });
+    get().saveToStorage();
   },
 
   setActiveDm: (dmId) => {
     set({ activeDmId: dmId, activeServerId: null, view: 'dm' });
+    get().saveToStorage();
   },
 
   setView: (view) => {
     set({ view, activeServerId: view === 'server' ? get().activeServerId : null });
+    get().saveToStorage();
+  },
+
+  createServer: async (name, icon) => {
+    const user = useAuthStore.getState().user;
+    if (!user) return null;
+
+    // Try API first
+    const response = await api.createServer({ name, icon });
+    if (response.success && response.data) {
+      const newServer = response.data as Server;
+      set(state => ({ servers: [...state.servers, newServer] }));
+      get().saveToStorage();
+      return newServer;
+    }
+
+    // Fallback: create locally
+    const serverId = `server_${Date.now()}`;
+    const generalCategoryId = `cat_${Date.now()}_1`;
+    const voiceCategoryId = `cat_${Date.now()}_2`;
+    
+    const newServer: Server = {
+      id: serverId,
+      name,
+      icon: icon || '',
+      ownerId: user.id,
+      memberCount: 1,
+      channels: [
+        { id: `ch_${Date.now()}_1`, name: 'general', type: 'text', categoryId: generalCategoryId, topic: 'General discussion', isNsfw: false, position: 0 },
+        { id: `ch_${Date.now()}_2`, name: 'off-topic', type: 'text', categoryId: generalCategoryId, topic: 'Anything goes', isNsfw: false, position: 1 },
+        { id: `ch_${Date.now()}_3`, name: 'General', type: 'voice', categoryId: voiceCategoryId, isNsfw: false, position: 0 },
+      ],
+      roles: [
+        { id: `role_${Date.now()}_1`, name: 'Admin', color: '#da373c', permissions: ['*'], position: 1 },
+        { id: `role_${Date.now()}_2`, name: 'Member', color: '#949ba4', permissions: [], position: 0 },
+      ],
+      members: [{ userId: user.id, user, roleIds: [`role_${Date.now()}_1`], joinedAt: new Date() }],
+    };
+
+    set(state => ({ servers: [...state.servers, newServer] }));
+    get().saveToStorage();
+    return newServer;
+  },
+
+  deleteServer: async (serverId) => {
+    await api.deleteServer(serverId);
+    const currentServers = get().servers;
+    const currentActiveServerId = get().activeServerId;
+    set({
+      servers: currentServers.filter(s => s.id !== serverId) as Server[],
+      activeServerId: currentActiveServerId === serverId ? null : currentActiveServerId,
+      activeChannelId: currentActiveServerId === serverId ? null : get().activeChannelId,
+    });
+    get().saveToStorage();
+    return true;
+  },
+
+  joinServer: async (inviteCode) => {
+    const response = await api.joinServer(inviteCode);
+    if (response.success && response.data) {
+      const server = response.data as Server;
+      const currentServers = get().servers;
+      set({ servers: [...currentServers, server] as Server[] });
+      get().saveToStorage();
+      return true;
+    }
+    return false;
+  },
+
+  leaveServer: async (serverId) => {
+    await api.leaveServer(serverId);
+    set(state => ({
+      servers: state.servers.filter(s => s.id !== serverId),
+      activeServerId: state.activeServerId === serverId ? null : state.activeServerId,
+    }));
+    get().saveToStorage();
+    return true;
+  },
+
+  createChannel: async (serverId, name, type) => {
+    const response = await api.createChannel(serverId, { name, type });
+    if (response.success && response.data) {
+      const channel = response.data as Channel;
+      const currentServers = get().servers;
+      set({
+        servers: currentServers.map(s => 
+          s.id === serverId ? { ...s, channels: [...s.channels, channel] } : s
+        ) as Server[],
+      });
+      get().saveToStorage();
+      return channel;
+    }
+
+    // Fallback
+    const newChannel: Channel = {
+      id: `ch_${Date.now()}`,
+      name: name.toLowerCase().replace(/\s+/g, '-'),
+      type,
+      categoryId: `cat_${Date.now()}`,
+      isNsfw: false,
+      position: 0,
+    };
+
+    set(state => ({
+      servers: state.servers.map(s => 
+        s.id === serverId ? { ...s, channels: [...s.channels, newChannel] } : s
+      ),
+    }));
+    get().saveToStorage();
+    return newChannel;
   },
 
   sendMessage: (channelId, content, author) => {
     const newMessage: Message = {
-      id: `${channelId}-${Date.now()}`,
+      id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
       content,
       author,
       channelId,
@@ -193,13 +218,17 @@ export const useChatStore = create<ChatState>((set, get) => ({
       isPinned: false,
       mentions: [],
     };
-    
+
+    // Try API
+    api.sendMessage(channelId, content);
+
     set(state => ({
       messages: {
         ...state.messages,
         [channelId]: [...(state.messages[channelId] || []), newMessage],
       },
     }));
+    get().saveToStorage();
   },
 
   addReaction: (channelId, messageId, emoji, userId) => {
@@ -224,18 +253,22 @@ export const useChatStore = create<ChatState>((set, get) => ({
       });
       return { messages: { ...state.messages, [channelId]: updatedMessages } };
     });
+    get().saveToStorage();
   },
 
   deleteMessage: (channelId, messageId) => {
+    api.deleteMessage(messageId);
     set(state => ({
       messages: {
         ...state.messages,
         [channelId]: (state.messages[channelId] || []).filter(msg => msg.id !== messageId),
       },
     }));
+    get().saveToStorage();
   },
 
   editMessage: (channelId, messageId, content) => {
+    api.editMessage(messageId, content);
     set(state => ({
       messages: {
         ...state.messages,
@@ -244,5 +277,111 @@ export const useChatStore = create<ChatState>((set, get) => ({
         ),
       },
     }));
+    get().saveToStorage();
+  },
+
+  createDirectMessage: (userId, user) => {
+    const currentUser = useAuthStore.getState().user;
+    if (!currentUser) return;
+
+    const existingDm = get().directMessages.find(dm => 
+      !dm.isGroup && dm.participants.some(p => p.id === userId) && dm.participants.some(p => p.id === currentUser.id)
+    );
+
+    if (existingDm) {
+      set({ activeDmId: existingDm.id, activeServerId: null, view: 'dm' });
+      get().saveToStorage();
+      return;
+    }
+
+    const newDm: DirectMessage = {
+      id: `dm_${Date.now()}`,
+      participants: [currentUser, user],
+      isGroup: false,
+    };
+
+    set(state => ({
+      directMessages: [...state.directMessages, newDm],
+      activeDmId: newDm.id,
+      activeServerId: null,
+      view: 'dm',
+    }));
+    get().saveToStorage();
+  },
+
+  sendFriendRequest: async (username) => {
+    const response = await api.sendFriendRequest(username);
+    if (response.success) return true;
+    
+    // Fallback: check local accounts
+    const storedAccounts = JSON.parse(localStorage.getItem('bluechat_accounts') || '[]');
+    const targetUser = storedAccounts.find((a: any) => a.username.toLowerCase() === username.toLowerCase());
+    
+    if (!targetUser) return false;
+    if (targetUser.id === useAuthStore.getState().user?.id) return false;
+
+    const existingFriend = get().friends.find(f => f.userId === targetUser.id);
+    if (existingFriend) return false;
+
+    const { password: _, ...userWithoutPassword } = targetUser;
+    const newFriend: Friend = {
+      userId: targetUser.id,
+      user: userWithoutPassword,
+      status: 'pending',
+    };
+
+    set(state => ({ 
+      friends: [...state.friends, newFriend],
+      allUsers: [...state.allUsers.filter(u => u.id !== userWithoutPassword.id), userWithoutPassword],
+    }));
+    get().saveToStorage();
+    return true;
+  },
+
+  acceptFriend: (userId) => {
+    set(state => ({
+      friends: state.friends.map(f => 
+        f.userId === userId ? { ...f, status: 'accepted' as const } : f
+      ),
+    }));
+    get().saveToStorage();
+  },
+
+  removeFriend: (userId) => {
+    set(state => ({
+      friends: state.friends.filter(f => f.userId !== userId),
+    }));
+    get().saveToStorage();
+  },
+
+  loadFromStorage: () => {
+    const data = loadPersistedData();
+    if (data) {
+      set({
+        servers: data.servers || [],
+        activeServerId: data.activeServerId || null,
+        activeChannelId: data.activeChannelId || null,
+        activeDmId: data.activeDmId || null,
+        messages: data.messages || {},
+        directMessages: data.directMessages || [],
+        friends: data.friends || [],
+        allUsers: data.allUsers || [],
+      });
+    }
+  },
+
+  saveToStorage: () => {
+    const state = get();
+    const data = {
+      servers: state.servers,
+      activeServerId: state.activeServerId,
+      activeChannelId: state.activeChannelId,
+      activeDmId: state.activeDmId,
+      messages: state.messages,
+      directMessages: state.directMessages,
+      friends: state.friends,
+      allUsers: state.allUsers,
+    };
+    localStorage.setItem('bluechat_data', JSON.stringify(data));
   },
 }));

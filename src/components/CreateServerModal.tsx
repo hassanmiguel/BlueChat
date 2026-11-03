@@ -1,13 +1,16 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useUIStore } from '../stores/uiStore';
+import { useChatStore } from '../stores/chatStore';
 import { X, Plus, Globe, Gamepad2, Music, Palette, Code, Coffee } from 'lucide-react';
 
 export default function CreateServerModal() {
   const { showCreateServer, toggleCreateServer } = useUIStore();
+  const { createServer, joinServer } = useChatStore();
   const [step, setStep] = useState<'choose' | 'create' | 'join'>('choose');
   const [serverName, setServerName] = useState('');
   const [inviteLink, setInviteLink] = useState('');
+  const [isCreating, setIsCreating] = useState(false);
 
   const templates = [
     { icon: Gamepad2, label: 'Gaming', color: '#5865f2' },
@@ -18,13 +21,20 @@ export default function CreateServerModal() {
     { icon: Globe, label: 'Education', color: '#00a8fc' },
   ];
 
-  const handleCreate = () => {
+  const handleCreate = async () => {
     if (serverName.trim()) {
-      // In a real app, this would create the server via API
-      useUIStore.getState().addNotification('Server Created', `${serverName} has been created!`, 'success');
-      toggleCreateServer();
-      setStep('choose');
-      setServerName('');
+      setIsCreating(true);
+      const server = await createServer(serverName.trim());
+      setIsCreating(false);
+      
+      if (server) {
+        useUIStore.getState().addNotification('Server Created', `${serverName} has been created!`, 'success');
+        toggleCreateServer();
+        setStep('choose');
+        setServerName('');
+      } else {
+        useUIStore.getState().addNotification('Error', 'Failed to create server', 'error');
+      }
     }
   };
 
@@ -137,12 +147,16 @@ export default function CreateServerModal() {
                   </button>
                   <motion.button
                     onClick={handleCreate}
-                    disabled={!serverName.trim()}
+                    disabled={!serverName.trim() || isCreating}
                     whileHover={{ scale: 1.02 }}
                     whileTap={{ scale: 0.98 }}
-                    className="flex-1 bg-dc-brand hover:bg-dc-brand-hover text-white font-medium py-2.5 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="flex-1 bg-dc-brand hover:bg-dc-brand-hover text-white font-medium py-2.5 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                   >
-                    Create Server
+                    {isCreating ? (
+                      <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    ) : (
+                      'Create Server'
+                    )}
                   </motion.button>
                 </div>
               </div>
@@ -184,12 +198,17 @@ export default function CreateServerModal() {
                     Back
                   </button>
                   <motion.button
-                    onClick={() => {
+                    onClick={async () => {
                       if (inviteLink.trim()) {
-                        useUIStore.getState().addNotification('Joined Server', 'You have joined the server!', 'success');
-                        toggleCreateServer();
-                        setStep('choose');
-                        setInviteLink('');
+                        const success = await joinServer(inviteLink.trim());
+                        if (success) {
+                          useUIStore.getState().addNotification('Joined Server', 'You have joined the server!', 'success');
+                          toggleCreateServer();
+                          setStep('choose');
+                          setInviteLink('');
+                        } else {
+                          useUIStore.getState().addNotification('Error', 'Invalid invite link', 'error');
+                        }
                       }
                     }}
                     disabled={!inviteLink.trim()}

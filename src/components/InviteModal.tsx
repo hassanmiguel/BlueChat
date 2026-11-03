@@ -18,13 +18,8 @@ export default function InviteModal() {
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const friends = [
-    { id: '2', username: 'DevMaster', status: 'online' },
-    { id: '3', username: 'PixelArtist', status: 'idle' },
-    { id: '5', username: 'NightOwl', status: 'dnd' },
-    { id: '6', username: 'CloudNine', status: 'online' },
-    { id: '7', username: 'GameLover', status: 'offline' },
-  ];
+  // Friends will be loaded from the backend
+  const friends: { id: string; username: string; status: string }[] = [];
 
   const statusColors: Record<string, string> = {
     online: 'bg-dc-green',

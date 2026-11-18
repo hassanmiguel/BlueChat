@@ -16,7 +16,8 @@ model User {
   username      String    @unique
   discriminator String    @default("0001")
   email         String    @unique
-  password      String
+  password      String?
+  emailVerified Boolean   @default(false)
   avatar        String?
   banner        String?
   bio           String?   @db.Text
@@ -26,24 +27,65 @@ model User {
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
   lastSeen      DateTime  @default(now())
+  notificationPrefs Json?
 
   // Relations
   servers       ServerMember[]
   ownedServers  Server[]       @relation("ServerOwner")
   messages      Message[]
   reactions     Reaction[]
-  roles         RoleMember[]
   sentRequests  FriendRequest[] @relation("SentRequests")
   receivedRequests FriendRequest[] @relation("ReceivedRequests")
   blocks        Block[]         @relation("Blocker")
   blockedBy     Block[]         @relation("Blocked")
   directMessages DirectMessageParticipant[]
+  dmMessages    DirectMessageMessage[]
+  dmReactions   DmReaction[]
+  ownedDms      DirectMessage[] @relation("DmOwner")
   sessions      Session[]
   auditLogs     AuditLog[]
   bans          Ban[]
   timeouts      Timeout[]
+  verificationTokens VerificationToken[]
+  oauthAccounts OAuthAccount[]
+  notifications Notification[]
+  reports       Report[]
 
   @@map("users")
+}
+
+enum VerificationTokenType {
+  EMAIL_VERIFY
+  PASSWORD_RESET
+}
+
+model VerificationToken {
+  id        String                 @id @default(cuid())
+  userId    String
+  tokenHash String                 @unique
+  type      VerificationTokenType
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime               @default(now())
+
+  user      User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, type])
+  @@map("verification_tokens")
+}
+
+model OAuthAccount {
+  id                String   @id @default(cuid())
+  userId            String
+  provider          String
+  providerAccountId String
+  createdAt         DateTime @default(now())
+
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@unique([userId, provider])
+  @@map("oauth_accounts")
 }
 
 enum UserStatus {
@@ -76,6 +118,8 @@ model Server {
   inviteCode       String   @unique @default(cuid())
   region           String   @default("us-east")
   verificationLevel VerificationLevel @default(NONE)
+  autoModEnabled   Boolean   @default(false)
+  blockedWords     String[]  @default([])
   ownerId          String
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
@@ -89,6 +133,7 @@ model Server {
   invites          ServerInvite[]
   auditLogs        AuditLog[]
   bans             Ban[]
+  reports          Report[]
 
   @@map("servers")
 }
@@ -247,7 +292,8 @@ model Attachment {
   messageId String
   filename  String
   url       String
-  type      String   // image, video, file
+  type      String   // image, video, audio, file
+  mimeType  String?
   size      Int
   width     Int?
   height    Int?
@@ -308,12 +354,16 @@ model Thread {
 
 // ============ DIRECT MESSAGE ============
 model DirectMessage {
-  id        String   @id @default(cuid())
-  isGroup   Boolean  @default(false)
-  name      String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id          String   @id @default(cuid())
+  isGroup     Boolean  @default(false)
+  name        String?
+  description String?  @db.Text
+  avatar      String?
+  ownerId     String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
+  owner        User?                     @relation("DmOwner", fields: [ownerId], references: [id], onDelete: SetNull)
   participants DirectMessageParticipant[]
   messages     DirectMessageMessage[]
 
@@ -321,9 +371,11 @@ model DirectMessage {
 }
 
 model DirectMessageParticipant {
-  id     String @id @default(cuid())
-  dmId   String
-  userId String
+  id         String    @id @default(cuid())
+  dmId       String
+  userId     String
+  lastReadAt DateTime?
+  muted      Boolean   @default(false)
 
   dm     DirectMessage @relation(fields: [dmId], references: [id], onDelete: Cascade)
   user   User          @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -333,17 +385,52 @@ model DirectMessageParticipant {
 }
 
 model DirectMessageMessage {
-  id        String   @id @default(cuid())
-  content   String   @db.Text
+  id        String    @id @default(cuid())
+  content   String    @db.Text
   dmId      String
   authorId  String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  replyToId String?
+  isPinned  Boolean   @default(false)
+  editedAt  DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
 
-  dm        DirectMessage @relation(fields: [dmId], references: [id], onDelete: Cascade)
+  dm         DirectMessage           @relation(fields: [dmId], references: [id], onDelete: Cascade)
+  author     User                    @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  replyTo    DirectMessageMessage?   @relation("DmMessageReplies", fields: [replyToId], references: [id], onDelete: SetNull)
+  replies    DirectMessageMessage[]  @relation("DmMessageReplies")
+  reactions  DmReaction[]
+  attachments DmAttachment[]
 
   @@index([dmId, createdAt])
   @@map("dm_messages")
+}
+
+model DmReaction {
+  id        String @id @default(cuid())
+  messageId String
+  userId    String
+  emoji     String
+
+  message DirectMessageMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  user    User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, userId, emoji])
+  @@map("dm_reactions")
+}
+
+model DmAttachment {
+  id        String @id @default(cuid())
+  messageId String
+  url       String
+  filename  String
+  mimeType  String
+  size      Int
+
+  message DirectMessageMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@index([messageId])
+  @@map("dm_attachments")
 }
 
 // ============ FRIEND SYSTEM ============
@@ -404,10 +491,12 @@ model Ban {
   serverId  String
   userId    String
   reason    String?  @db.Text
+  expiresAt DateTime?
   bannedById String
   createdAt DateTime @default(now())
 
   server    Server   @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([serverId, userId])
   @@map("bans")
@@ -421,6 +510,8 @@ model Timeout {
   expiresAt DateTime
   createdById String
   createdAt DateTime @default(now())
+
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([serverId, userId])
   @@map("timeouts")
@@ -458,4 +549,40 @@ enum AuditAction {
   MESSAGE_PIN
   INVITE_CREATE
   INVITE_DELETE
+  REPORT_CREATED
+  REPORT_RESOLVED
+}
+
+model Notification {
+  id        String    @id @default(cuid())
+  userId    String
+  type      String
+  title     String
+  body      String?   @db.Text
+  link      String?
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@map("notifications")
+}
+
+model Report {
+  id          String   @id @default(cuid())
+  reporterId  String
+  serverId    String?
+  targetType  String
+  targetId    String
+  reason      String   @db.Text
+  status      String   @default("OPEN")
+  createdAt   DateTime @default(now())
+  resolvedAt  DateTime?
+
+  reporter    User     @relation(fields: [reporterId], references: [id], onDelete: Cascade)
+  server      Server?  @relation(fields: [serverId], references: [id], onDelete: Cascade)
+
+  @@index([serverId, status])
+  @@map("reports")
 }

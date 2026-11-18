@@ -1,145 +1,170 @@
 import { create } from 'zustand';
 import { User } from '../types';
 import { api } from '../services/api';
+import { readMedia, writeMedia } from '../services/localProfile';
+import { playSound } from '../services/soundService';
 
 interface AuthState {
   user: User | null;
   isAuthenticated: boolean;
   isLoading: boolean;
   error: string | null;
+  initialize: () => Promise<void>;
   login: (email: string, password: string) => Promise<boolean>;
   register: (username: string, email: string, password: string) => Promise<boolean>;
-  logout: () => void;
-  updateUser: (updates: Partial<User>) => void;
+  logout: () => Promise<void>;
+  updateUser: (updates: Partial<User>) => Promise<boolean>;
   clearError: () => void;
 }
+
+const mediaOrigin = (import.meta.env.VITE_API_URL || 'http://localhost:3001/api').replace(/\/api\/?$/, '');
+
+const mediaUrl = (value?: string): string => {
+  if (!value) return '';
+  if (/^(https?:|blob:|data:)/.test(value)) return value;
+  return `${mediaOrigin}${value.startsWith('/') ? value : `/${value}`}`;
+};
+
+const normalizeUser = (raw: any): User => ({
+  ...raw,
+  avatar: mediaUrl(raw.avatar),
+  banner: mediaUrl(raw.banner),
+  status: String(raw.status || 'online').toLowerCase() as User['status'],
+  createdAt: raw.createdAt ? new Date(raw.createdAt) : new Date(),
+});
+
+/**
+ * Blend the server profile with a locally cached copy. If the server comes
+ * back with an empty avatar/banner we keep the last image the user picked,
+ * and if a save never made it to the server we always prefer the local copy.
+ */
+const withCachedMedia = (user: User): User => {
+  const cached = readMedia(user.id);
+  if (!cached) return user;
+
+  const keepCached = (serverValue: string, cachedValue?: string) => {
+    if (cachedValue === undefined) return serverValue;
+    if (!cached.synced) return cachedValue;
+    return serverValue || cachedValue;
+  };
+
+  return {
+    ...user,
+    avatar: keepCached(user.avatar, cached.avatar),
+    banner: keepCached(user.banner || '', cached.banner),
+  };
+};
+
+const cachedValue = (value?: string): string | undefined => {
+  if (value === undefined) return undefined;
+  return value ? mediaUrl(value) : '';
+};
 
 export const useAuthStore = create<AuthState>((set, get) => ({
   user: null,
   isAuthenticated: false,
-  isLoading: false,
+  isLoading: true,
   error: null,
+
+  initialize: async () => {
+    set({ isLoading: true });
+    await api.initCsrf();
+    const response = await api.getMe();
+    if (response.success && response.data) {
+      set({ user: withCachedMedia(normalizeUser(response.data)), isAuthenticated: true, isLoading: false });
+    } else {
+      set({ user: null, isAuthenticated: false, isLoading: false });
+    }
+  },
 
   login: async (email: string, password: string) => {
     set({ isLoading: true, error: null });
-
     if (!email || !password) {
       set({ isLoading: false, error: 'Please fill in all fields' });
       return false;
     }
 
-    // Try backend API first
     const response = await api.login(email, password);
-
     if (response.success && response.data) {
-      const { user, token } = response.data;
-      api.setToken(token);
-      set({ user, isAuthenticated: true, isLoading: false });
-      localStorage.setItem('bluechat_user', JSON.stringify(user));
+      const { user, csrfToken } = response.data;
+      api.setCsrfToken(csrfToken);
+      set({ user: withCachedMedia(normalizeUser(user)), isAuthenticated: true, isLoading: false });
+      void playSound('login');
       return true;
     }
 
-    // Fallback: check localStorage for previously registered accounts
-    const storedAccounts = JSON.parse(localStorage.getItem('bluechat_accounts') || '[]');
-    const foundAccount = storedAccounts.find((a: any) => a.email === email && a.password === password);
-
-    if (foundAccount) {
-      const { password: _, ...userWithoutPassword } = foundAccount;
-      set({ user: userWithoutPassword, isAuthenticated: true, isLoading: false });
-      localStorage.setItem('bluechat_user', JSON.stringify(userWithoutPassword));
-      return true;
-    }
-
-    set({ isLoading: false, error: 'Invalid email or password' });
+    set({ isLoading: false, error: response.error || 'Invalid email or password' });
     return false;
   },
 
   register: async (username: string, email: string, password: string) => {
     set({ isLoading: true, error: null });
-
     if (!username || !email || !password) {
       set({ isLoading: false, error: 'Please fill in all fields' });
       return false;
     }
-
     if (password.length < 8) {
       set({ isLoading: false, error: 'Password must be at least 8 characters' });
       return false;
     }
 
-    // Try backend API first
     const response = await api.register(username, email, password);
-
     if (response.success && response.data) {
-      const { user, token } = response.data;
-      api.setToken(token);
-      set({ user, isAuthenticated: true, isLoading: false });
-      localStorage.setItem('bluechat_user', JSON.stringify(user));
+      const { user, csrfToken } = response.data;
+      api.setCsrfToken(csrfToken);
+      set({ user: withCachedMedia(normalizeUser(user)), isAuthenticated: true, isLoading: false });
+      void playSound('login');
       return true;
     }
 
-    // Fallback: store in localStorage
-    const storedAccounts = JSON.parse(localStorage.getItem('bluechat_accounts') || '[]');
-    const exists = storedAccounts.find((a: any) => a.email === email);
-
-    if (exists) {
-      set({ isLoading: false, error: 'An account with this email already exists' });
-      return false;
-    }
-
-    const newUser: User = {
-      id: `user_${Date.now()}`,
-      username,
-      discriminator: String(Math.floor(Math.random() * 9999)).padStart(4, '0'),
-      email,
-      avatar: '',
-      bio: '',
-      status: 'online',
-      createdAt: new Date(),
-    };
-
-    storedAccounts.push({ ...newUser, password });
-    localStorage.setItem('bluechat_accounts', JSON.stringify(storedAccounts));
-
-    set({ user: newUser, isAuthenticated: true, isLoading: false });
-    localStorage.setItem('bluechat_user', JSON.stringify(newUser));
-    return true;
+    set({ isLoading: false, error: response.error || 'Failed to create account' });
+    return false;
   },
 
-  logout: () => {
+  logout: async () => {
+    await api.logout();
     set({ user: null, isAuthenticated: false, error: null });
-    api.setToken(null);
-    localStorage.removeItem('bluechat_user');
-    localStorage.removeItem('bluechat_token');
   },
 
-  updateUser: (updates: Partial<User>) => {
-    const currentUser = get().user;
-    if (currentUser) {
-      const updatedUser = { ...currentUser, ...updates };
-      set({ user: updatedUser });
-      localStorage.setItem('bluechat_user', JSON.stringify(updatedUser));
-      
-      // Also update in stored accounts
-      const storedAccounts = JSON.parse(localStorage.getItem('bluechat_accounts') || '[]');
-      const idx = storedAccounts.findIndex((a: any) => a.id === updatedUser.id);
-      if (idx !== -1) {
-        storedAccounts[idx] = { ...storedAccounts[idx], ...updates };
-        localStorage.setItem('bluechat_accounts', JSON.stringify(storedAccounts));
-      }
+  updateUser: async (updates: Partial<User>) => {
+    const current = get().user;
+    const touchesMedia = Object.prototype.hasOwnProperty.call(updates, 'avatar')
+      || Object.prototype.hasOwnProperty.call(updates, 'banner');
+
+    // Remember the choice immediately so closing the settings panel can
+    // never make it vanish, even if the request is still in flight.
+    if (touchesMedia && current) {
+      writeMedia(current.id, {
+        ...(Object.prototype.hasOwnProperty.call(updates, 'avatar')
+          ? { avatar: cachedValue(updates.avatar) }
+          : {}),
+        ...(Object.prototype.hasOwnProperty.call(updates, 'banner')
+          ? { banner: cachedValue(updates.banner) }
+          : {}),
+        synced: false,
+      });
     }
+
+    const response = await api.updateProfile(updates);
+    const succeeded = Boolean(response.success && response.data);
+
+    if (succeeded && response.data) {
+      if (touchesMedia && current) writeMedia(current.id, { synced: true });
+      const user = withCachedMedia(normalizeUser(response.data));
+      set({ user, error: null });
+      return true;
+    }
+
+    // Optimistically keep the change in memory so the UI reflects what the
+    // user just saved. A reload will fall back to the cached copy above.
+    if (current) set({ user: withCachedMedia({ ...current, ...updates }) });
+    set({ error: response.error || 'Failed to update profile' });
+    return false;
   },
 
   clearError: () => set({ error: null }),
 }));
 
-// Initialize from localStorage
-const savedUser = localStorage.getItem('bluechat_user');
-if (savedUser) {
-  try {
-    const user = JSON.parse(savedUser);
-    useAuthStore.setState({ user, isAuthenticated: true });
-  } catch (e) {
-    localStorage.removeItem('bluechat_user');
-  }
-}
+api.setUnauthorizedHandler(() => {
+  useAuthStore.setState({ user: null, isAuthenticated: false });
+});

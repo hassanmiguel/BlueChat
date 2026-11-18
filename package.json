@@ -4,8 +4,13 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "predev": "node scripts/index-sounds.mjs",
     "build": "vite build",
-    "typecheck": "tsc --noEmit"
+    "prebuild": "node scripts/index-sounds.mjs",
+    "typecheck": "tsc --noEmit",
+    "sounds:index": "node scripts/index-sounds.mjs",
+    "emoji:import": "node scripts/import-emojme.mjs",
+    "emoji:import:gg": "node scripts/import-emojigg.mjs"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.1.0",

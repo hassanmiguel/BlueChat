@@ -1,6 +1,7 @@
 import { useChatStore } from '../stores/chatStore';
 import { useUIStore } from '../stores/uiStore';
 import { Crown, Shield, Code } from 'lucide-react';
+import Avatar from './Avatar';
 
 export default function MemberSidebar() {
   const { servers, activeServerId, view } = useChatStore();
@@ -46,9 +47,12 @@ export default function MemberSidebar() {
       className="flex items-center gap-3 px-2 py-1.5 rounded hover:bg-dc-hover cursor-pointer transition-colors group"
     >
       <div className="relative shrink-0">
-        <div className="w-8 h-8 rounded-full flex items-center justify-center text-white text-sm font-bold" style={{ backgroundColor: getRoleColor(member.roleIds) + '40' }}>
-          <span style={{ color: getRoleColor(member.roleIds) }}>{member.user.username[0].toUpperCase()}</span>
-        </div>
+        <Avatar
+          src={member.user.avatar}
+          name={member.user.username}
+          className="w-8 h-8 rounded-full text-white text-sm font-bold overflow-hidden"
+          style={{ backgroundColor: getRoleColor(member.roleIds) + '40', color: getRoleColor(member.roleIds) }}
+        />
         <div className={`absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full border-[3px] border-dc-member ${statusColors[member.user.status]}`}></div>
       </div>
       <div className="flex-1 min-w-0">

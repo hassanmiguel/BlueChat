@@ -1,8 +1,5 @@
-// API Service Layer for blueChat
-// Connects frontend to the Express backend
-// Falls back to localStorage when backend is unavailable
-
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
+const CSRF_COOKIE = 'bluechat_csrf';
 
 interface ApiResponse<T = any> {
   success: boolean;
@@ -10,67 +7,122 @@ interface ApiResponse<T = any> {
   error?: string;
 }
 
+export interface DiscoveredUser {
+  id: string;
+  username: string;
+  discriminator: string;
+  avatar: string | null;
+  bio?: string | null;
+  status: string;
+  customStatus?: string | null;
+  createdAt: string;
+  mutualServers: number;
+}
+
+export interface DiscoverUsersResult {
+  users: DiscoveredUser[];
+  total: number;
+  seed: string;
+  query: string;
+}
+
+const readCookie = (name: string): string | null => {
+  const match = document.cookie.match(new RegExp(`(?:^|; )${name}=([^;]*)`));
+  return match ? decodeURIComponent(match[1]) : null;
+};
+
 class ApiClient {
   private baseUrl: string;
-  private token: string | null = null;
+  private csrfToken: string | null = null;
+  private onUnauthorized: (() => void) | null = null;
 
   constructor(baseUrl: string) {
     this.baseUrl = baseUrl;
-    this.token = localStorage.getItem('bluechat_token');
   }
 
-  setToken(token: string | null) {
-    this.token = token;
-    if (token) {
-      localStorage.setItem('bluechat_token', token);
-    } else {
-      localStorage.removeItem('bluechat_token');
+  setUnauthorizedHandler(handler: () => void) {
+    this.onUnauthorized = handler;
+  }
+
+  private getCsrfToken(): string | null {
+    const fromCookie = readCookie(CSRF_COOKIE);
+    if (fromCookie) {
+      this.csrfToken = fromCookie;
     }
+    return this.csrfToken;
   }
 
-  private async request<T>(endpoint: string, options: RequestInit = {}): Promise<ApiResponse<T>> {
-    try {
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
-        ...(options.headers as Record<string, string> || {}),
-      };
-      
-      if (this.token) {
-        headers['Authorization'] = `Bearer ${this.token}`;
-      }
+  setCsrfToken(token: string) {
+    this.csrfToken = token;
+  }
 
+  private async rawRequest<T>(endpoint: string, options: RequestInit, retry = true): Promise<ApiResponse<T>> {
+    const method = (options.method || 'GET').toUpperCase();
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      ...((options.headers as Record<string, string>) || {}),
+    };
+
+    if (!['GET', 'HEAD', 'OPTIONS'].includes(method)) {
+      const csrf = this.getCsrfToken();
+      if (csrf) headers['X-CSRF-Token'] = csrf;
+    }
+
+    try {
       const response = await fetch(`${this.baseUrl}${endpoint}`, {
         ...options,
+        method,
         headers,
+        credentials: 'include',
       });
 
-      const data = await response.json();
+      const text = await response.text();
+      const data = text ? JSON.parse(text) : {};
 
       if (!response.ok) {
-        return { success: false, error: data.error || 'Request failed' };
+        if (response.status === 401 && retry && !endpoint.startsWith('/auth/')) {
+          const refreshed = await this.refresh();
+          if (refreshed.success) return this.rawRequest<T>(endpoint, options, false);
+          this.onUnauthorized?.();
+        }
+        return { success: false, error: data.error || `Request failed (${response.status})` };
       }
 
       return { success: true, data };
     } catch (error) {
-      // Network error - backend offline
-      console.warn(`API call to ${endpoint} failed - backend offline`);
-      return { success: false, error: 'Backend unavailable' };
+      return { success: false, error: error instanceof Error ? error.message : 'Network error' };
     }
   }
 
-  // Auth endpoints
+  private request<T>(endpoint: string, options: RequestInit = {}): Promise<ApiResponse<T>> {
+    return this.rawRequest<T>(endpoint, options);
+  }
+
+  async initCsrf(): Promise<void> {
+    const response = await this.request<{ csrfToken: string }>('/auth/csrf');
+    if (response.success && response.data) this.setCsrfToken(response.data.csrfToken);
+  }
+
   async login(email: string, password: string) {
-    return this.request<{ user: any; token: string }>('/auth/login', {
+    return this.request<{ user: any; csrfToken: string }>('/auth/login', {
       method: 'POST',
       body: JSON.stringify({ email, password }),
     });
   }
 
   async register(username: string, email: string, password: string) {
-    return this.request<{ user: any; token: string }>('/auth/register', {
+    return this.request<{ user: any; csrfToken: string }>('/auth/register', {
       method: 'POST',
       body: JSON.stringify({ username, email, password }),
     });
+  }
+
+  async logout() {
+    return this.request('/auth/logout', { method: 'POST' });
+  }
+
+  async refresh() {
+    return this.request<{ csrfToken: string }>('/auth/refresh', { method: 'POST' });
   }
 
   async getMe() {
@@ -84,16 +136,149 @@ class ApiClient {
     });
   }
 
-  // Server endpoints
+  async uploadMedia(file: File, field: 'avatar' | 'banner' | 'file' = 'file'): Promise<ApiResponse<{ url: string; name?: string; size?: number; type?: string }>> {
+    const body = new FormData();
+    body.append('file', file);
+
+    try {
+      const response = await fetch(`${this.baseUrl}/upload`, {
+        method: 'POST',
+        body,
+        credentials: 'include',
+        headers: {
+          'X-CSRF-Token': this.getCsrfToken() || '',
+          'X-Upload-Field': field,
+        },
+      });
+      const data = await response.json();
+      if (!response.ok) return { success: false, error: data.error || 'Upload failed' };
+      return { success: true, data };
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : 'Upload failed' };
+    }
+  }
+
+  async forgotPassword(email: string) {
+    return this.request('/auth/password/forgot', {
+      method: 'POST',
+      body: JSON.stringify({ email }),
+    });
+  }
+
+  async resetPassword(token: string, password: string) {
+    return this.request('/auth/password/reset', {
+      method: 'POST',
+      body: JSON.stringify({ token, password }),
+    });
+  }
+
+  async verifyEmail(token: string) {
+    return this.request('/auth/verify-email', {
+      method: 'POST',
+      body: JSON.stringify({ token }),
+    });
+  }
+
+  async resendVerification() {
+    return this.request('/auth/resend-verification', { method: 'POST' });
+  }
+
+  async getNotifications(limit = 50) {
+    return this.request<{ notifications: any[]; unread: number }>(`/notifications?limit=${limit}`);
+  }
+
+  async markNotificationRead(id: string) {
+    return this.request(`/notifications/${id}/read`, { method: 'PATCH' });
+  }
+
+  async markAllNotificationsRead() {
+    return this.request('/notifications/read-all', { method: 'POST' });
+  }
+
+  async clearNotifications() {
+    return this.request('/notifications', { method: 'DELETE' });
+  }
+
+  async deleteNotification(id: string) {
+    return this.request(`/notifications/${id}`, { method: 'DELETE' });
+  }
+
+  async saveNotificationPrefs(prefs: Record<string, boolean>) {
+    return this.request('/notifications/preferences', { method: 'POST', body: JSON.stringify(prefs) });
+  }
+
+  async globalSearch(query: string, filters: Record<string, string | boolean> = {}) {
+    const params = new URLSearchParams({ q: query });
+    for (const [key, value] of Object.entries(filters)) {
+      if (value !== undefined && value !== '' && value !== false) params.set(key, String(value));
+    }
+    return this.request<{
+      users: any[]; messages: any[]; servers: any[]; channels: any[]; files: any[];
+    }>(`/search?${params}`);
+  }
+
+  async kickMember(serverId: string, userId: string, reason?: string) {
+    return this.request(`/moderation/${serverId}/kick/${userId}`, { method: 'POST', body: JSON.stringify({ reason }) });
+  }
+
+  async banMember(serverId: string, userId: string, reason?: string, expiresAt?: string) {
+    return this.request(`/moderation/${serverId}/ban/${userId}`, { method: 'POST', body: JSON.stringify({ reason, expiresAt }) });
+  }
+
+  async unbanMember(serverId: string, userId: string) {
+    return this.request(`/moderation/${serverId}/ban/${userId}`, { method: 'DELETE' });
+  }
+
+  async timeoutMember(serverId: string, userId: string, minutes: number, reason?: string) {
+    return this.request(`/moderation/${serverId}/timeout/${userId}`, { method: 'POST', body: JSON.stringify({ minutes, reason }) });
+  }
+
+  async removeTimeout(serverId: string, userId: string) {
+    return this.request(`/moderation/${serverId}/timeout/${userId}`, { method: 'DELETE' });
+  }
+
+  async getBans(serverId: string) {
+    return this.request(`/moderation/${serverId}/bans`);
+  }
+
+  async getTimeouts(serverId: string) {
+    return this.request(`/moderation/${serverId}/timeouts`);
+  }
+
+  async getReports(serverId: string) {
+    return this.request(`/moderation/${serverId}/reports`);
+  }
+
+  async updateReport(serverId: string, reportId: string, status: 'OPEN' | 'RESOLVED' | 'DISMISSED') {
+    return this.request(`/moderation/${serverId}/reports/${reportId}`, { method: 'PATCH', body: JSON.stringify({ status }) });
+  }
+
+  async reportContent(serverId: string, targetType: 'USER' | 'MESSAGE' | 'SERVER', targetId: string, reason: string) {
+    return this.request(`/moderation/${serverId}/reports`, { method: 'POST', body: JSON.stringify({ targetType, targetId, reason }) });
+  }
+
+  async assignRole(serverId: string, roleId: string, userId: string) {
+    return this.request(`/servers/${serverId}/roles/${roleId}/members/${userId}`, { method: 'POST' });
+  }
+
+  async unassignRole(serverId: string, roleId: string, userId: string) {
+    return this.request(`/servers/${serverId}/roles/${roleId}/members/${userId}`, { method: 'DELETE' });
+  }
+
+  async updateRole(serverId: string, roleId: string, updates: { name?: string; color?: string; permissions?: string[]; position?: number }) {
+    return this.request(`/servers/${serverId}/roles/${roleId}`, { method: 'PATCH', body: JSON.stringify(updates) });
+  }
+
+  async deleteRole(serverId: string, roleId: string) {
+    return this.request(`/servers/${serverId}/roles/${roleId}`, { method: 'DELETE' });
+  }
+
   async getServers() {
     return this.request('/servers');
   }
 
   async createServer(data: { name: string; icon?: string }) {
-    return this.request('/servers', {
-      method: 'POST',
-      body: JSON.stringify(data),
-    });
+    return this.request('/servers', { method: 'POST', body: JSON.stringify(data) });
   }
 
   async getServer(serverId: string) {
@@ -101,10 +286,7 @@ class ApiClient {
   }
 
   async updateServer(serverId: string, data: any) {
-    return this.request(`/servers/${serverId}`, {
-      method: 'PATCH',
-      body: JSON.stringify(data),
-    });
+    return this.request(`/servers/${serverId}`, { method: 'PATCH', body: JSON.stringify(data) });
   }
 
   async deleteServer(serverId: string) {
@@ -122,15 +304,29 @@ class ApiClient {
     return this.request(`/servers/${serverId}/leave`, { method: 'POST' });
   }
 
-  // Channel endpoints
+  async getRoles(serverId: string) {
+    return this.request(`/servers/${serverId}/roles`);
+  }
+
+  async createRole(serverId: string, data: any) {
+    return this.request(`/servers/${serverId}/roles`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async getAuditLog(serverId: string) {
+    return this.request(`/servers/${serverId}/audit-log`);
+  }
+
   async getChannels(serverId: string) {
-    return this.request(`/servers/${serverId}/channels`);
+    return this.request(`/channels/${serverId}`);
   }
 
   async createChannel(serverId: string, data: any) {
-    return this.request(`/servers/${serverId}/channels`, {
+    return this.request('/channels', {
       method: 'POST',
-      body: JSON.stringify(data),
+      body: JSON.stringify({ serverId, ...data }),
     });
   }
 
@@ -145,7 +341,6 @@ class ApiClient {
     return this.request(`/channels/${channelId}`, { method: 'DELETE' });
   }
 
-  // Message endpoints
   async getMessages(channelId: string, limit = 50, before?: string) {
     const params = new URLSearchParams({ limit: String(limit) });
     if (before) params.set('before', before);
@@ -187,21 +382,100 @@ class ApiClient {
     return this.request(`/messages/${messageId}/pin`, { method: 'POST' });
   }
 
-  // DM endpoints
   async getDirectMessages() {
     return this.request('/dms');
   }
 
-  async createDirectMessage(userIds: string[]) {
+  async createDirectMessage(userIds: string[], name?: string) {
     return this.request('/dms', {
+      method: 'POST',
+      body: JSON.stringify({ userIds, name }),
+    });
+  }
+
+  async updateDirectMessage(dmId: string, updates: { name?: string; description?: string; avatar?: string }) {
+    return this.request(`/dms/${dmId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(updates),
+    });
+  }
+
+  async addDmParticipants(dmId: string, userIds: string[]) {
+    return this.request(`/dms/${dmId}/participants`, {
       method: 'POST',
       body: JSON.stringify({ userIds }),
     });
   }
 
-  // Friends endpoints
+  async removeDmParticipant(dmId: string, userId: string) {
+    return this.request(`/dms/${dmId}/participants/${userId}`, { method: 'DELETE' });
+  }
+
+  async transferDmOwner(dmId: string, userId: string) {
+    return this.request(`/dms/${dmId}/owner`, {
+      method: 'POST',
+      body: JSON.stringify({ userId }),
+    });
+  }
+
+  async getDmMessages(dmId: string, limit = 50) {
+    return this.request(`/dms/${dmId}/messages?limit=${limit}`);
+  }
+
+  async searchDmMessages(dmId: string, query: string) {
+    return this.request(`/dms/${dmId}/search?q=${encodeURIComponent(query)}`);
+  }
+
+  async markDmRead(dmId: string) {
+    return this.request(`/dms/${dmId}/read`, { method: 'POST' });
+  }
+
+  async sendDmMessage(dmId: string, content: string, replyToId?: string, attachments?: { url: string; filename: string; mimeType: string; size: number }[]) {
+    return this.request(`/dms/${dmId}/messages`, {
+      method: 'POST',
+      body: JSON.stringify({ content, replyToId, attachments }),
+    });
+  }
+
+  async editDmMessage(messageId: string, content: string) {
+    return this.request(`/dms/messages/${messageId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ content }),
+    });
+  }
+
+  async deleteDmMessage(messageId: string) {
+    return this.request(`/dms/messages/${messageId}`, { method: 'DELETE' });
+  }
+
+  async toggleDmReaction(messageId: string, emoji: string) {
+    return this.request(`/dms/messages/${messageId}/reactions`, {
+      method: 'POST',
+      body: JSON.stringify({ emoji }),
+    });
+  }
+
+  async pinDmMessage(messageId: string) {
+    return this.request(`/dms/messages/${messageId}/pin`, { method: 'POST' });
+  }
+
   async getFriends() {
     return this.request('/friends');
+  }
+
+  async discoverUsers(options: {
+    q?: string;
+    seed?: string;
+    limit?: number;
+    onlineOnly?: boolean;
+  } = {}) {
+    const params = new URLSearchParams();
+    if (options.q) params.set('q', options.q);
+    if (options.seed) params.set('seed', options.seed);
+    if (options.limit) params.set('limit', String(options.limit));
+    if (options.onlineOnly) params.set('online', 'true');
+    const suffix = params.toString();
+    return this.request<DiscoverUsersResult>(`/users/discover${suffix ? `?${suffix}` : ''}`);
   }
 
   async sendFriendRequest(username: string) {
@@ -219,55 +493,20 @@ class ApiClient {
     return this.request(`/friends/${friendId}/decline`, { method: 'POST' });
   }
 
+  async removeFriend(friendId: string) {
+    return this.request(`/friends/${friendId}`, { method: 'DELETE' });
+  }
+
   async blockUser(userId: string) {
     return this.request(`/friends/${userId}/block`, { method: 'POST' });
   }
 
-  // Role endpoints
-  async getRoles(serverId: string) {
-    return this.request(`/servers/${serverId}/roles`);
+  async unblockUser(userId: string) {
+    return this.request(`/friends/${userId}/unblock`, { method: 'POST' });
   }
 
-  async createRole(serverId: string, data: any) {
-    return this.request(`/servers/${serverId}/roles`, {
-      method: 'POST',
-      body: JSON.stringify(data),
-    });
-  }
-
-  async assignRole(serverId: string, userId: string, roleId: string) {
-    return this.request(`/servers/${serverId}/members/${userId}/roles/${roleId}`, {
-      method: 'PUT',
-    });
-  }
-
-  // Moderation endpoints
-  async kickUser(serverId: string, userId: string) {
-    return this.request(`/servers/${serverId}/members/${userId}/kick`, { method: 'POST' });
-  }
-
-  async banUser(serverId: string, userId: string, reason?: string) {
-    return this.request(`/servers/${serverId}/members/${userId}/ban`, {
-      method: 'POST',
-      body: JSON.stringify({ reason }),
-    });
-  }
-
-  async timeoutUser(serverId: string, userId: string, duration: number) {
-    return this.request(`/servers/${serverId}/members/${userId}/timeout`, {
-      method: 'POST',
-      body: JSON.stringify({ duration }),
-    });
-  }
-
-  async getAuditLog(serverId: string) {
-    return this.request(`/servers/${serverId}/audit-log`);
-  }
-
-  // Search
-  async searchMessages(channelId: string, query: string, filters?: any) {
-    const params = new URLSearchParams({ q: query, ...filters });
-    return this.request(`/channels/${channelId}/search?${params}`);
+  async searchMessages(channelId: string, query: string) {
+    return this.request(`/channels/${channelId}/search?q=${encodeURIComponent(query)}`);
   }
 }
 

@@ -11,7 +11,8 @@
     "db:push": "prisma db push",
     "db:migrate": "prisma migrate dev",
     "db:studio": "prisma studio",
-    "db:seed": "tsx src/seed.ts"
+    "db:purge-demo": "tsx scripts/purge-demo-accounts.ts",
+    "db:purge-all": "tsx scripts/purge-demo-accounts.ts --all"
   },
   "dependencies": {
     "@prisma/client": "^5.22.0",

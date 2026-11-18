@@ -1,0 +1,80 @@
+{
+  "version": 1,
+  "sounds": [
+    {
+      "path": "Message/COMCell_Message 1 (ID 1111)_BigSoundBank.com.mp3",
+      "name": "COMCell Message 1",
+      "group": "Message"
+    },
+    {
+      "path": "Message/COMCell_Message 2 (ID 1112)_BigSoundBank.com.mp3",
+      "name": "COMCell Message 2",
+      "group": "Message"
+    },
+    {
+      "path": "Message/COMCell_Message sent (ID 1313)_BigSoundBank.com.mp3",
+      "name": "COMCell Message Sent",
+      "group": "Message"
+    },
+    {
+      "path": "Message/TMARK_The sncf jingle 2 (ID 0564)_BigSoundBank.com.mp3",
+      "name": "TMARK The Sncf Jingle 2",
+      "group": "Message"
+    },
+    {
+      "path": "Notification/liecio-message-notification-190034.mp3",
+      "name": "Liecio Message Notification 190034",
+      "group": "Notification"
+    },
+    {
+      "path": "Notification/mario.mp3",
+      "name": "Mario",
+      "group": "Notification"
+    },
+    {
+      "path": "Notification/mixkit-bell-notification-933.wav",
+      "name": "Mixkit Bell Notification 933",
+      "group": "Notification"
+    },
+    {
+      "path": "Notification/mixkit-bubble-pop-up-alert-notification-2357.wav",
+      "name": "Mixkit Bubble Pop Up Alert Notification 2357",
+      "group": "Notification"
+    },
+    {
+      "path": "Notification/mixkit-correct-answer-tone-2870.wav",
+      "name": "Mixkit Correct Answer Tone 2870",
+      "group": "Notification"
+    },
+    {
+      "path": "Notification/mixkit-long-pop-2358.wav",
+      "name": "Mixkit Long Pop 2358",
+      "group": "Notification"
+    },
+    {
+      "path": "Notification/mixkit-message-pop-alert-2354.mp3",
+      "name": "Mixkit Message Pop Alert 2354",
+      "group": "Notification"
+    },
+    {
+      "path": "Notification/mixkit-positive-notification-951.wav",
+      "name": "Mixkit Positive Notification 951",
+      "group": "Notification"
+    },
+    {
+      "path": "Notification/mixkit-sci-fi-click-900.wav",
+      "name": "Mixkit Sci Fi Click 900",
+      "group": "Notification"
+    },
+    {
+      "path": "Notification/mixkit-software-interface-back-2575.wav",
+      "name": "Mixkit Software Interface Back 2575",
+      "group": "Notification"
+    },
+    {
+      "path": "Notification/mixkit-software-interface-start-2574.wav",
+      "name": "Mixkit Software Interface Start 2574",
+      "group": "Notification"
+    }
+  ]
+}

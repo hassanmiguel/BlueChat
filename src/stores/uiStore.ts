@@ -9,7 +9,11 @@ interface UIState {
   showProfilePopup: boolean;
   showSearchModal: boolean;
   showThreadPanel: boolean;
-  
+  showDiscovery: boolean;
+  showAddFriend: boolean;
+  showCalls: boolean;
+  showNotifications: boolean;
+
   // Voice
   isInVoice: boolean;
   voiceChannelId: string | null;
@@ -24,6 +28,10 @@ interface UIState {
   // Profile
   profileUserId: string | null;
   
+  // Friends
+  friendFilter: 'online' | 'all' | 'pending' | 'blocked';
+  friendSearch: string;
+
   // Settings
   activeSettingsTab: string;
   activeServerSettingsTab: string;
@@ -43,6 +51,10 @@ interface UIState {
   toggleInviteModal: () => void;
   toggleSearchModal: () => void;
   toggleThreadPanel: () => void;
+  toggleDiscovery: () => void;
+  setShowAddFriend: (value: boolean) => void;
+  setShowCalls: (value: boolean) => void;
+  setShowNotifications: (value: boolean) => void;
   openProfile: (userId: string) => void;
   closeProfile: () => void;
   
@@ -55,6 +67,8 @@ interface UIState {
   toggleScreenShare: () => void;
   
   // Settings actions
+  setFriendFilter: (filter: 'online' | 'all' | 'pending' | 'blocked') => void;
+  setFriendSearch: (query: string) => void;
   setActiveSettingsTab: (tab: string) => void;
   setActiveServerSettingsTab: (tab: string) => void;
   setTheme: (theme: 'dark' | 'light') => void;
@@ -74,7 +88,11 @@ export const useUIStore = create<UIState>((set, get) => ({
   showProfilePopup: false,
   showSearchModal: false,
   showThreadPanel: false,
-  
+  showDiscovery: false,
+  showAddFriend: false,
+  showCalls: false,
+  showNotifications: false,
+
   isInVoice: false,
   voiceChannelId: null,
   voiceChannelName: null,
@@ -87,6 +105,8 @@ export const useUIStore = create<UIState>((set, get) => ({
   
   profileUserId: null,
   
+  friendFilter: 'online',
+  friendSearch: '',
   activeSettingsTab: 'account',
   activeServerSettingsTab: 'overview',
   
@@ -102,7 +122,11 @@ export const useUIStore = create<UIState>((set, get) => ({
   toggleInviteModal: () => set(s => ({ showInviteModal: !s.showInviteModal })),
   toggleSearchModal: () => set(s => ({ showSearchModal: !s.showSearchModal })),
   toggleThreadPanel: () => set(s => ({ showThreadPanel: !s.showThreadPanel })),
-  
+  toggleDiscovery: () => set(s => ({ showDiscovery: !s.showDiscovery })),
+  setShowAddFriend: (value) => set({ showAddFriend: value }),
+  setShowCalls: (value) => set({ showCalls: value }),
+  setShowNotifications: (value) => set({ showNotifications: value }),
+
   openProfile: (userId) => set({ profileUserId: userId, showProfilePopup: true }),
   closeProfile: () => set({ profileUserId: null, showProfilePopup: false }),
   
@@ -116,6 +140,8 @@ export const useUIStore = create<UIState>((set, get) => ({
   toggleCamera: () => set(s => ({ isCameraOn: !s.isCameraOn })),
   toggleScreenShare: () => set(s => ({ isScreenSharing: !s.isScreenSharing })),
   
+  setFriendFilter: (friendFilter) => set({ friendFilter }),
+  setFriendSearch: (friendSearch) => set({ friendSearch }),
   setActiveSettingsTab: (tab) => set({ activeSettingsTab: tab }),
   setActiveServerSettingsTab: (tab) => set({ activeServerSettingsTab: tab }),
   setTheme: (theme) => set({ theme }),

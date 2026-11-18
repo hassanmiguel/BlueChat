@@ -2,11 +2,11 @@ import { motion } from 'framer-motion';
 import { useChatStore } from '../stores/chatStore';
 import { useAuthStore } from '../stores/authStore';
 import { useUIStore } from '../stores/uiStore';
-import { Plus, Compass, MessageCircle } from 'lucide-react';
+import { Plus, Compass, MessageCircle, PhoneCall } from 'lucide-react';
 
 export default function ServerSidebar() {
   const { servers, activeServerId, setActiveServer, setView, view } = useChatStore();
-  const { toggleCreateServer, toggleInviteModal } = useUIStore();
+  const { toggleCreateServer, toggleDiscovery, showCalls, setShowCalls } = useUIStore();
   const user = useAuthStore(s => s.user);
 
   const getInitials = (name: string) => {
@@ -37,6 +37,25 @@ export default function ServerSidebar() {
         {/* Tooltip */}
         <div className="absolute left-16 top-1/2 -translate-y-1/2 bg-dc-popout text-white text-sm font-medium px-3 py-2 rounded-lg whitespace-nowrap opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50 shadow-xl pointer-events-none">
           Direct Messages
+          <div className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-1 w-2 h-2 bg-dc-popout rotate-45"></div>
+        </div>
+      </div>
+
+      {/* Calls */}
+      <div className="server-icon-wrapper relative group">
+        <div className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-1 w-1 bg-white rounded-r-full server-pill" style={{ height: showCalls ? '40px' : '0px' }}></div>
+        <motion.button
+          whileHover={{ scale: 1.05 }}
+          whileTap={{ scale: 0.95 }}
+          onClick={() => setShowCalls(!showCalls)}
+          className={`server-icon w-12 h-12 rounded-[50%] flex items-center justify-center transition-all ${
+            showCalls ? 'rounded-[35%] bg-dc-brand' : 'bg-dc-sidebar hover:bg-dc-brand hover:rounded-[35%]'
+          }`}
+        >
+          <PhoneCall className="w-5 h-5 text-white" />
+        </motion.button>
+        <div className="absolute left-16 top-1/2 -translate-y-1/2 bg-dc-popout text-white text-sm font-medium px-3 py-2 rounded-lg whitespace-nowrap opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50 shadow-xl pointer-events-none">
+          Calls
           <div className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-1 w-2 h-2 bg-dc-popout rotate-45"></div>
         </div>
       </div>
@@ -108,9 +127,11 @@ export default function ServerSidebar() {
       {/* Explore */}
       <div className="server-icon-wrapper relative group">
         <motion.button
-          whileHover={{ scale: 1.05 }}
+          whileHover={{ scale: 1.1, borderRadius: '16px' }}
           whileTap={{ scale: 0.95 }}
-          className="server-icon w-12 h-12 rounded-[50%] bg-dc-sidebar flex items-center justify-center text-dc-green hover:bg-dc-green hover:text-white hover:rounded-[35%] transition-all"
+          onClick={toggleDiscovery}
+          title="Explore servers"
+          className="server-icon w-12 h-12 rounded-[50%] bg-dc-sidebar flex items-center justify-center text-dc-green cursor-pointer"
         >
           <Compass className="w-6 h-6" />
         </motion.button>

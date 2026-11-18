@@ -1,23 +1,36 @@
-import { useState, useRef, useEffect } from 'react';
+import { Fragment, useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useChatStore } from '../stores/chatStore';
 import { useAuthStore } from '../stores/authStore';
-import { Hash, Megaphone, BookOpen, Volume2, Pin, Users, Search, PlusCircle, Gift, Sticker, Smile, Send, MessageSquare, UserPlus } from 'lucide-react';
+import { Hash, Megaphone, BookOpen, Volume2, Pin, Users, Search, Smile, Send, MessageSquare, UserPlus, Ban, Trash2 } from 'lucide-react';
 import { useUIStore } from '../stores/uiStore';
+import { socketService } from '../services/socket';
+import { api } from '../services/api';
+import { playSound } from '../services/soundService';
+import EmojiPicker from './EmojiPicker';
+import MessageContent, { useRichContent } from './MessageContent';
 import { Message } from '../types';
 import TypingIndicator from './TypingIndicator';
+import Avatar from './Avatar';
+import ContextMenu, { useContextMenu } from './ContextMenu';
+import NotificationBell from './NotificationBell';
 
 
 export default function ChatArea() {
-  const { messages, activeChannelId, activeServerId, servers, sendMessage, addReaction, deleteMessage, editMessage, activeDmId, directMessages, view, setView } = useChatStore();
-  const { toggleThreadPanel, toggleInviteModal, toggleSearchModal, openProfile, toggleCreateServer } = useUIStore();
+  const { messages, unreadFrom, activeChannelId, activeServerId, servers, sendMessage, addReaction, deleteMessage, editMessage, activeDmId, directMessages, view, setView, createDirectMessage, clearUnread, pinMessage } = useChatStore();
+  const { toggleThreadPanel, toggleInviteModal, toggleSearchModal, openProfile, toggleCreateServer, setShowAddFriend } = useUIStore();
   const [messageInput, setMessageInput] = useState('');
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editContent, setEditContent] = useState('');
   const [showEmojiPicker, setShowEmojiPicker] = useState<string | null>(null);
   const [showPins, setShowPins] = useState(false);
+  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const typingTimer = useRef<number | null>(null);
+  const typingActive = useRef(false);
   const user = useAuthStore(s => s.user);
 
   const activeServer = servers.find(s => s.id === activeServerId);
@@ -30,15 +43,83 @@ export default function ChatArea() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [currentMessages.length]);
 
-  const handleSend = () => {
-    if (!messageInput.trim() || !user) return;
-    
+  const notifyTyping = (value: string) => {
+    const target = activeChannelId || activeDmId;
+    if (!target) return;
+    if (!value.trim()) {
+      if (typingActive.current) socketService.stopTyping(target);
+      typingActive.current = false;
+      return;
+    }
+    if (!typingActive.current) {
+      socketService.startTyping(target);
+      typingActive.current = true;
+    }
+    if (typingTimer.current) window.clearTimeout(typingTimer.current);
+    typingTimer.current = window.setTimeout(() => {
+      socketService.stopTyping(target);
+      typingActive.current = false;
+    }, 2500);
+  };
+
+  useEffect(() => () => {
+    if (typingTimer.current) window.clearTimeout(typingTimer.current);
+    if (typingActive.current) {
+      const target = activeChannelId || activeDmId;
+      if (target) socketService.stopTyping(target);
+    }
+  }, [activeChannelId, activeDmId]);
+
+  const onComposerChange = (value: string) => {
+    setMessageInput(value);
+    notifyTyping(value);
+  };
+
+  const handleSend = async () => {
+    if ((!messageInput.trim() && !pendingFiles.length) || !user) return;
+
     const targetId = activeChannelId || activeDmId;
     if (!targetId) return;
 
-    sendMessage(targetId, messageInput, user);
+    const content = messageInput;
+    const replyId = replyingTo?.id;
+    const files = pendingFiles;
     setMessageInput('');
     setReplyingTo(null);
+    setPendingFiles([]);
+    socketService.stopTyping(targetId);
+    typingActive.current = false;
+
+    try {
+      setUploading(true);
+      const attachments = [];
+      for (const file of files) {
+        const response = await api.uploadMedia(file, 'file');
+        if (!response.success || !response.data) throw new Error(response.error || 'Upload failed');
+        attachments.push({
+          id: `${Date.now()}-${file.name}`,
+          filename: response.data.name || file.name,
+          url: response.data.url,
+          size: response.data.size || file.size,
+          mimeType: file.type,
+          type: file.type.startsWith('image/') ? 'image' as const
+            : file.type.startsWith('video/') ? 'video' as const
+              : file.type.startsWith('audio/') ? 'audio' as const
+                : 'file' as const,
+        });
+      }
+      const sent = await sendMessage(targetId, content || 'Sent an attachment', user, replyId, attachments);
+      if (!sent) {
+        setMessageInput(content);
+        setPendingFiles(files);
+      } else void playSound('messageSent');
+    } catch (error) {
+      setMessageInput(content);
+      setPendingFiles(files);
+      useUIStore.getState().addNotification('Upload failed', error instanceof Error ? error.message : 'Could not upload file.', 'error');
+    } finally {
+      setUploading(false);
+    }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -53,6 +134,17 @@ export default function ChatArea() {
     editMessage(activeChannelId, msgId, editContent);
     setEditingId(null);
     setEditContent('');
+  };
+
+  const handlePin = async (msg: Message) => {
+    const targetId = activeChannelId || activeDmId;
+    if (!targetId) return;
+    const ok = await pinMessage(targetId, msg.id);
+    useUIStore.getState().addNotification(
+      ok ? (msg.isPinned ? 'Message Unpinned' : 'Message Pinned') : 'Error',
+      ok ? (msg.isPinned ? 'The message has been unpinned.' : 'The message has been pinned.') : 'Failed to update pin',
+      ok ? 'success' : 'error'
+    );
   };
 
   const formatTime = (date: Date) => {
@@ -78,9 +170,11 @@ export default function ChatArea() {
         {/* Header */}
         <div className="h-12 px-4 flex items-center border-b border-dc-divider/30 shadow-sm shrink-0">
           <div className="relative mr-3">
-            <div className="w-6 h-6 rounded-full bg-dc-brand flex items-center justify-center text-white text-xs font-bold">
-              {dm.isGroup ? '👥' : (otherUser?.username[0] || '?')}
-            </div>
+            <Avatar
+              src={dm.isGroup ? undefined : otherUser?.avatar}
+              name={dm.isGroup ? '👥' : (otherUser?.username || '?')}
+              className="w-6 h-6 rounded-full bg-dc-brand text-white text-xs font-bold overflow-hidden"
+            />
           </div>
           <h3 className="font-bold text-white">{dm.isGroup ? dm.name : otherUser?.username}</h3>
           {!dm.isGroup && otherUser && (
@@ -89,14 +183,15 @@ export default function ChatArea() {
             </span>
           )}
           <div className="ml-auto flex items-center gap-2">
-            <button className="p-1.5 rounded hover:bg-dc-active text-dc-text-muted hover:text-dc-text transition-colors">
+            <button disabled title="Voice calls are not available yet" className="p-1.5 rounded text-dc-text-muted cursor-not-allowed">
               <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
                 <path d="M12 3a1 1 0 0 0-1-1h-.06a1 1 0 0 0-.74.32L5.92 7H3a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h2.92l4.28 4.68a1 1 0 0 0 .74.32H11a1 1 0 0 0 1-1V3ZM3 10v4h2v-4H3Z"/>
               </svg>
             </button>
-            <button className="p-1.5 rounded hover:bg-dc-active text-dc-text-muted hover:text-dc-text transition-colors">
+            <button onClick={toggleSearchModal} title="Search" className="p-1.5 rounded hover:bg-dc-active text-dc-text-muted hover:text-dc-text transition-colors">
               <Search className="w-5 h-5" />
             </button>
+            <NotificationBell inline />
           </div>
         </div>
 
@@ -111,6 +206,7 @@ export default function ChatArea() {
               onReply={() => setReplyingTo(msg)}
               onEdit={() => { setEditingId(msg.id); setEditContent(msg.content); }}
               onDelete={() => deleteMessage(activeDmId!, msg.id)}
+              onPin={() => handlePin(msg)}
               onReaction={(emoji) => addReaction(activeDmId!, msg.id, emoji, user?.id || '')}
               showEmojiPicker={showEmojiPicker === msg.id}
               toggleEmojiPicker={() => setShowEmojiPicker(showEmojiPicker === msg.id ? null : msg.id)}
@@ -127,17 +223,20 @@ export default function ChatArea() {
         </div>
 
         {/* Typing Indicator */}
-        <TypingIndicator />
+        <TypingIndicator targetId={activeChannelId || (activeDmId ? `dm:${activeDmId}` : undefined)} />
 
         {/* Input */}
         <MessageInput
           messageInput={messageInput}
-          setMessageInput={setMessageInput}
+          setMessageInput={onComposerChange}
           handleKeyDown={handleKeyDown}
           handleSend={handleSend}
           replyingTo={replyingTo}
           setReplyingTo={setReplyingTo}
           channelName={dm.isGroup ? dm.name || 'Group DM' : otherUser?.username || 'DM'}
+          pendingFiles={pendingFiles}
+          onFiles={setPendingFiles}
+          uploading={uploading}
         />
       </div>
     );
@@ -168,7 +267,7 @@ export default function ChatArea() {
                 Create a Server
               </button>
               <button 
-                onClick={() => setView('friends')}
+                onClick={() => setShowAddFriend(true)}
                 className="px-6 py-2.5 bg-dc-input hover:bg-dc-active text-white font-medium rounded-lg transition-colors"
               >
                 Add Friends
@@ -233,6 +332,7 @@ export default function ChatArea() {
           >
             <Search className="w-5 h-5" />
           </button>
+          <NotificationBell inline />
         </div>
       </div>
 
@@ -256,7 +356,7 @@ export default function ChatArea() {
                       <span className="text-sm font-medium text-white">{msg.author.username}</span>
                       <span className="text-xs text-dc-text-muted">{formatTime(msg.timestamp)}</span>
                     </div>
-                    <p className="text-sm text-dc-text">{msg.content}</p>
+                    <p className="text-sm text-dc-text"><MessageContent content={msg.content} /></p>
                   </div>
                 ))
               )}
@@ -277,31 +377,48 @@ export default function ChatArea() {
         </div>
 
         {currentMessages.map((msg, i) => (
-          <MessageRow
-            key={msg.id}
-            message={msg}
-            isCurrentUser={msg.author.id === user?.id}
-            showAvatar={i === 0 || currentMessages[i - 1].author.id !== msg.author.id || new Date(msg.timestamp).getTime() - new Date(currentMessages[i - 1].timestamp).getTime() > 300000}
-            onReply={() => setReplyingTo(msg)}
-            onEdit={() => { setEditingId(msg.id); setEditContent(msg.content); }}
-            onDelete={() => activeChannelId && deleteMessage(activeChannelId, msg.id)}
-            onReaction={(emoji) => activeChannelId && addReaction(activeChannelId, msg.id, emoji, user?.id || '')}
-            showEmojiPicker={showEmojiPicker === msg.id}
-            toggleEmojiPicker={() => setShowEmojiPicker(showEmojiPicker === msg.id ? null : msg.id)}
-            quickEmojis={quickEmojis}
-            formatTime={formatTime}
-            editingId={editingId}
-            editContent={editContent}
-            setEditContent={setEditContent}
-            handleEdit={handleEdit}
-            setEditingId={setEditingId}
-          />
+          <Fragment key={msg.id}>
+            {unreadFrom[activeChannelId || ''] === msg.id && (
+              <div className="my-3 flex items-center gap-2">
+                <div className="flex-1 h-px bg-dc-red/60" />
+                <span className="text-[10px] font-bold uppercase tracking-wide text-dc-red">New messages</span>
+                <div className="flex-1 h-px bg-dc-red/60" />
+              </div>
+            )}
+            <MessageRow
+              message={msg}
+              isCurrentUser={msg.author.id === user?.id}
+              showAvatar={i === 0 || currentMessages[i - 1].author.id !== msg.author.id || new Date(msg.timestamp).getTime() - new Date(currentMessages[i - 1].timestamp).getTime() > 300000}
+              onReply={() => setReplyingTo(msg)}
+              onEdit={() => { setEditingId(msg.id); setEditContent(msg.content); }}
+              onDelete={() => activeChannelId && deleteMessage(activeChannelId, msg.id)}
+              onPin={() => handlePin(msg)}
+              onReaction={(emoji) => activeChannelId && addReaction(activeChannelId, msg.id, emoji, user?.id || '')}
+              showEmojiPicker={showEmojiPicker === msg.id}
+              toggleEmojiPicker={() => setShowEmojiPicker(showEmojiPicker === msg.id ? null : msg.id)}
+              quickEmojis={quickEmojis}
+              formatTime={formatTime}
+              editingId={editingId}
+              editContent={editContent}
+              setEditContent={setEditContent}
+              handleEdit={handleEdit}
+              setEditingId={setEditingId}
+            />
+          </Fragment>
         ))}
         <div ref={messagesEndRef} />
+        {unreadFrom[activeChannelId || ''] && (
+          <button
+            onClick={() => clearUnread(activeChannelId || '')}
+            className="sticky bottom-2 left-1/2 -translate-x-1/2 mt-2 rounded-full bg-dc-brand px-3 py-1 text-xs font-medium text-white shadow-lg"
+          >
+            Mark as read
+          </button>
+        )}
       </div>
 
       {/* Typing Indicator */}
-      <TypingIndicator />
+      <TypingIndicator targetId={activeChannelId || (activeDmId ? `dm:${activeDmId}` : undefined)} />
 
       {/* Message Input */}
       <MessageInput
@@ -312,6 +429,9 @@ export default function ChatArea() {
         replyingTo={replyingTo}
         setReplyingTo={setReplyingTo}
         channelName={activeChannel.name}
+        pendingFiles={pendingFiles}
+        onFiles={setPendingFiles}
+        uploading={uploading}
       />
     </div>
   );
@@ -325,6 +445,7 @@ interface MessageRowProps {
   onReply: () => void;
   onEdit: () => void;
   onDelete: () => void;
+  onPin: () => void;
   onReaction: (emoji: string) => void;
   showEmojiPicker: boolean;
   toggleEmojiPicker: () => void;
@@ -337,8 +458,10 @@ interface MessageRowProps {
   setEditingId: (id: string | null) => void;
 }
 
-function MessageRow({ message, isCurrentUser, showAvatar, onReply, onEdit, onDelete, onReaction, showEmojiPicker, toggleEmojiPicker, quickEmojis, formatTime, editingId, editContent, setEditContent, handleEdit, setEditingId }: MessageRowProps) {
+function MessageRow({ message, isCurrentUser, showAvatar, onReply, onEdit, onDelete, onPin, onReaction, showEmojiPicker, toggleEmojiPicker, quickEmojis, formatTime, editingId, editContent, setEditContent, handleEdit, setEditingId }: MessageRowProps) {
   const { openProfile } = useUIStore();
+  const markUnread = useChatStore((s) => s.markUnread);
+  const { contextMenu, handleContextMenu, closeContextMenu } = useContextMenu();
   const statusColors: Record<string, string> = {
     online: 'bg-dc-green',
     idle: 'bg-dc-yellow',
@@ -347,47 +470,13 @@ function MessageRow({ message, isCurrentUser, showAvatar, onReply, onEdit, onDel
     offline: 'bg-gray-500',
   };
 
-  const renderContent = (content: string) => {
-    // Code blocks
-    if (content.includes('```')) {
-      const parts = content.split('```');
-      return parts.map((part, i) => {
-        if (i % 2 === 1) {
-          const lines = part.split('\n');
-          const lang = lines[0]?.trim();
-          const code = lang ? lines.slice(1).join('\n') : part;
-          return (
-            <pre key={i} className="bg-dc-darker border border-dc-divider/30 rounded-lg p-3 my-1 overflow-x-auto">
-              {lang && <div className="text-xs text-dc-text-muted mb-1">{lang}</div>}
-              <code className="text-sm text-dc-text">{code}</code>
-            </pre>
-          );
-        }
-        return <span key={i}>{part}</span>;
-      });
-    }
-
-    // Bold
-    if (content.includes('**')) {
-      const parts = content.split(/\*\*(.*?)\*\*/g);
-      return parts.map((part, i) => i % 2 === 1 ? <strong key={i} className="font-bold">{part}</strong> : part);
-    }
-
-    // Mentions
-    if (content.includes('@')) {
-      const parts = content.split(/(@\w+)/g);
-      return parts.map((part, i) => 
-        part.startsWith('@') ? (
-          <span key={i} className="bg-dc-brand/20 text-dc-brand rounded px-0.5 hover:bg-dc-brand/30 cursor-pointer">{part}</span>
-        ) : part
-      );
-    }
-
-    return content;
-  };
+  const renderContent = useRichContent();
 
   return (
-    <div className={`message-row group relative py-0.5 px-2 -mx-2 rounded ${showAvatar ? 'mt-4' : ''}`}>
+    <div
+      className={`message-row group relative py-0.5 px-2 -mx-2 rounded ${showAvatar ? 'mt-4' : ''}`}
+      onContextMenu={(e) => handleContextMenu(e, message.id, isCurrentUser)}
+    >
       {/* Reply indicator */}
       {message.replyTo && (
         <div className="flex items-center gap-2 ml-12 mb-1 text-xs text-dc-text-muted">
@@ -402,11 +491,15 @@ function MessageRow({ message, isCurrentUser, showAvatar, onReply, onEdit, onDel
         <div className="shrink-0 w-10">
           {showAvatar && (
             <div className="relative">
-              <div 
+              <div
                 onClick={() => openProfile(message.author.id)}
-                className="w-10 h-10 rounded-full bg-dc-brand flex items-center justify-center text-white text-sm font-bold cursor-pointer hover:opacity-80 transition-opacity"
+                className="cursor-pointer hover:opacity-80 transition-opacity"
               >
-                {message.author.username[0].toUpperCase()}
+                <Avatar
+                  src={message.author.avatar}
+                  name={message.author.username}
+                  className="w-10 h-10 rounded-full bg-dc-brand text-white text-sm font-bold overflow-hidden"
+                />
               </div>
               <div className={`absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full border-[3px] border-dc-chat ${statusColors[message.author.status] || statusColors.online}`}></div>
             </div>
@@ -451,6 +544,26 @@ function MessageRow({ message, isCurrentUser, showAvatar, onReply, onEdit, onDel
             </div>
           )}
 
+          {message.attachments.length > 0 && (
+            <div className="flex flex-wrap gap-2 mt-2">
+              {message.attachments.map((file) => (
+                <div key={file.id} className="max-w-xs">
+                  {file.type === 'image' ? (
+                    <a href={file.url} target="_blank" rel="noreferrer"><img src={file.url} alt={file.filename} className="max-h-56 rounded-lg" /></a>
+                  ) : file.type === 'video' ? (
+                    <video src={file.url} controls className="max-h-56 rounded-lg" />
+                  ) : file.type === 'audio' ? (
+                    <audio src={file.url} controls />
+                  ) : (
+                    <a href={file.url} download={file.filename} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 rounded-lg bg-dc-hover px-3 py-2 text-xs text-dc-text hover:underline">
+                      📎 {file.filename}
+                    </a>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+
           {/* Reactions */}
           {message.reactions.length > 0 && (
             <div className="flex flex-wrap gap-1 mt-1">
@@ -489,6 +602,9 @@ function MessageRow({ message, isCurrentUser, showAvatar, onReply, onEdit, onDel
             <path d="M10 8.26667V4L3 11.4667L10 18.9333V14.56C15 14.56 18.5 16.2667 21 20C20 14.6667 17 9.33333 10 8.26667Z"/>
           </svg>
         </button>
+        <button onClick={onPin} title={message.isPinned ? 'Unpin Message' : 'Pin Message'} className="p-1.5 hover:bg-dc-hover text-dc-text-muted hover:text-dc-text transition-colors">
+          <Pin className="w-4 h-4" />
+        </button>
         {isCurrentUser && (
           <>
             <button onClick={onEdit} className="p-1.5 hover:bg-dc-hover text-dc-text-muted hover:text-dc-text transition-colors">
@@ -512,20 +628,36 @@ function MessageRow({ message, isCurrentUser, showAvatar, onReply, onEdit, onDel
             initial={{ opacity: 0, scale: 0.9 }}
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.9 }}
-            className="absolute -top-10 right-4 bg-dc-dark border border-dc-divider/30 rounded-lg shadow-xl p-2 flex gap-1 z-50"
+            className="absolute top-0 right-4 z-50"
           >
-            {quickEmojis.map(emoji => (
-              <button
-                key={emoji}
-                onClick={() => { onReaction(emoji); toggleEmojiPicker(); }}
-                className="w-8 h-8 flex items-center justify-center rounded hover:bg-dc-hover transition-colors text-lg"
-              >
-                {emoji}
-              </button>
-            ))}
+            <EmojiPicker
+              compact
+              quickEmojis={quickEmojis}
+              onSelect={(emoji) => {
+                onReaction(emoji);
+                toggleEmojiPicker();
+              }}
+            />
           </motion.div>
         )}
       </AnimatePresence>
+
+      {contextMenu?.messageId === message.id && (
+        <ContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          isCurrentUser={isCurrentUser}
+          onReply={onReply}
+          onAddReaction={toggleEmojiPicker}
+          onCopyText={() => { void navigator.clipboard?.writeText(message.content); }}
+          onPin={onPin}
+          onCopyLink={() => { void navigator.clipboard?.writeText(`${window.location.origin}/?message=${message.id}`); }}
+          onMarkUnread={() => markUnread(message.channelId, message.id)}
+          onEdit={isCurrentUser ? onEdit : undefined}
+          onDelete={isCurrentUser ? onDelete : undefined}
+          onClose={closeContextMenu}
+        />
+      )}
     </div>
   );
 }
@@ -539,9 +671,14 @@ interface MessageInputProps {
   replyingTo: Message | null;
   setReplyingTo: (msg: Message | null) => void;
   channelName: string;
+  pendingFiles: File[];
+  onFiles: (files: File[]) => void;
+  uploading: boolean;
 }
 
-function MessageInput({ messageInput, setMessageInput, handleKeyDown, handleSend, replyingTo, setReplyingTo, channelName }: MessageInputProps) {
+function MessageInput({ messageInput, setMessageInput, handleKeyDown, handleSend, replyingTo, setReplyingTo, channelName, pendingFiles, onFiles, uploading }: MessageInputProps) {
+  const [showComposerEmoji, setShowComposerEmoji] = useState(false);
+
   return (
     <div className="px-4 pb-6 pt-2 shrink-0">
       {/* Reply indicator */}
@@ -562,9 +699,28 @@ function MessageInput({ messageInput, setMessageInput, handleKeyDown, handleSend
         )}
       </AnimatePresence>
 
+      {pendingFiles.length > 0 && (
+        <div className="flex flex-wrap gap-2 mb-2">
+          {pendingFiles.map((file, index) => (
+            <span key={`${file.name}-${index}`} className="flex items-center gap-2 bg-dc-sidebar rounded-full px-3 py-1 text-xs text-dc-text">
+              {file.name}
+              <button onClick={() => onFiles(pendingFiles.filter((_, i) => i !== index))} className="text-dc-text-muted hover:text-dc-red">✕</button>
+            </span>
+          ))}
+        </div>
+      )}
       <div className={`bg-dc-input rounded-lg flex items-center px-4 ${replyingTo ? 'rounded-t-none' : ''}`}>
-        <button className="p-2 text-dc-text-muted hover:text-dc-text transition-colors shrink-0">
-          <PlusCircle className="w-6 h-6" />
+        <input
+          type="file"
+          multiple
+          hidden
+          onChange={(event) => {
+            onFiles([...pendingFiles, ...Array.from(event.target.files || [])].slice(0, 10));
+            event.target.value = '';
+          }}
+        />
+        <button title="Attach files" className="p-2 text-dc-text-muted hover:text-dc-text transition-colors shrink-0" onClick={(event) => (event.currentTarget.previousElementSibling as HTMLInputElement)?.click()}>
+          <svg className="w-6 h-6" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2Zm5 11h-4v4h-2v-4H7v-2h4V7h2v4h4v2Z"/></svg>
         </button>
         <input
           type="text"
@@ -575,15 +731,40 @@ function MessageInput({ messageInput, setMessageInput, handleKeyDown, handleSend
           className="flex-1 bg-transparent py-3 px-2 text-dc-text placeholder-dc-text-muted/50 text-sm border-none"
         />
         <div className="flex items-center gap-1 shrink-0">
-          <button className="p-2 text-dc-text-muted hover:text-dc-text transition-colors">
-            <Gift className="w-5 h-5" />
+          <button disabled title="Gifts are not available yet" className="p-2 text-dc-text-muted cursor-not-allowed">
+            <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor"><path d="M20 6h-2.18A3 3 0 0 0 12 2.35 3 3 0 0 0 6.18 6H4a2 2 0 0 0-2 2v2h9V6h2v4h9V8a2 2 0 0 0-2-2ZM12 4a1 1 0 1 1 0 2H8a1 1 0 0 1 1-1 1 1 0 0 0 1-1 1 1 0 0 0-1-1h3Zm-8 8v8a2 2 0 0 0 2 2h5v-10H4Zm9 10h5a2 2 0 0 0 2-2v-8h-7v10Z"/></svg>
           </button>
-          <button className="p-2 text-dc-text-muted hover:text-dc-text transition-colors">
-            <Sticker className="w-5 h-5" />
+          <button disabled title="Stickers are not available yet" className="p-2 text-dc-text-muted cursor-not-allowed">
+            <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10c1.1 0 2-.9 2-2 0-.51-.19-.98-.5-1.33-.32-.36-.5-.82-.5-1.33 0-1.1.9-2 2-2h2c3.31 0 6-2.69 6-6 0-5.52-4.48-9.34-11-9.34Zm-3.5 9a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3Zm7 0a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3Z"/></svg>
           </button>
-          <button className="p-2 text-dc-text-muted hover:text-dc-text transition-colors">
-            <Smile className="w-5 h-5" />
-          </button>
+          <div className="chat-emoji-anchor">
+            <button
+              type="button"
+              title="Emoji"
+              aria-label="Emoji"
+              onClick={() => setShowComposerEmoji((value) => !value)}
+              className="p-2 text-dc-text-muted hover:text-dc-text transition-colors"
+            >
+              <Smile className="w-5 h-5" />
+            </button>
+            <AnimatePresence>
+              {showComposerEmoji && (
+                <motion.div
+                  className="chat-emoji-pop"
+                  initial={{ opacity: 0, y: 8, scale: 0.96 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: 8, scale: 0.96 }}
+                >
+                  <EmojiPicker
+                    onSelect={(value) => {
+                      setMessageInput(`${messageInput}${messageInput && !/\s$/.test(messageInput) ? ' ' : ''}${value}`);
+                      setShowComposerEmoji(false);
+                    }}
+                  />
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
           {messageInput.trim() && (
             <motion.button
               initial={{ scale: 0 }}
@@ -602,13 +783,17 @@ function MessageInput({ messageInput, setMessageInput, handleKeyDown, handleSend
 
 // Friends View
 function FriendsView() {
-  const { friends } = useChatStore();
-  const [activeTab, setActiveTab] = useState('online');
+  const { friends, createDirectMessage, removeFriend, blockUser, unblockUser, acceptFriend, declineFriend } = useChatStore();
+  const { setShowAddFriend, friendFilter, setFriendFilter, friendSearch, setFriendSearch, addNotification } = useUIStore();
 
   const filteredFriends = friends.filter(f => {
-    if (activeTab === 'online') return f.user.status === 'online';
-    if (activeTab === 'pending') return f.status === 'pending' || f.status === 'incoming';
-    if (activeTab === 'blocked') return f.status === 'blocked';
+    if (friendFilter === 'online') return f.status === 'accepted' && f.user.status === 'online';
+    if (friendFilter === 'pending') return f.status === 'pending' || f.status === 'incoming';
+    if (friendFilter === 'blocked') return f.status === 'blocked';
+    if (friendSearch.trim()) {
+      const query = friendSearch.trim().toLowerCase();
+      if (!f.user.username.toLowerCase().includes(query) && !(f.user.bio || '').toLowerCase().includes(query)) return false;
+    }
     return true;
   });
 
@@ -626,21 +811,37 @@ function FriendsView() {
       <div className="h-12 px-4 flex items-center border-b border-dc-divider/30 shadow-sm shrink-0">
         <Users className="w-6 h-6 text-dc-text-muted mr-2" />
         <h3 className="font-bold text-white">Friends</h3>
-        <div className="w-px h-6 bg-dc-divider mx-4"></div>
+        <button
+          onClick={() => setShowAddFriend(true)}
+          className="ml-auto mr-3 px-2.5 py-1.5 rounded bg-dc-brand hover:bg-dc-brand-hover text-white text-xs font-semibold flex items-center gap-1.5 transition-colors"
+        >
+          <UserPlus className="w-4 h-4" /> Add Friend
+        </button>
+        <NotificationBell inline />
+        <div className="w-px h-6 bg-dc-divider mx-1"></div>
         <div className="flex items-center gap-1">
-          {['Online', 'All', 'Pending', 'Blocked'].map(tab => (
+          {(['online', 'all', 'pending', 'blocked'] as const).map(tab => (
             <button
               key={tab}
-              onClick={() => setActiveTab(tab.toLowerCase())}
+              onClick={() => setFriendFilter(tab)}
               className={`px-2 py-1 rounded text-sm transition-colors ${
-                activeTab === tab.toLowerCase() 
-                  ? 'bg-dc-active text-white' 
+                friendFilter === tab
+                  ? 'bg-dc-active text-white'
                   : 'text-dc-text-muted hover:text-dc-text hover:bg-dc-hover'
               }`}
             >
-              {tab}
+              {tab === 'all' ? 'All' : tab[0].toUpperCase() + tab.slice(1)}
             </button>
           ))}
+        </div>
+        <div className="relative ml-3">
+          <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-4 h-4 text-dc-text-muted" />
+          <input
+            value={friendSearch}
+            onChange={(e) => setFriendSearch(e.target.value)}
+            placeholder="Search friends"
+            className="bg-dc-input text-sm text-dc-text placeholder-dc-text-muted/50 rounded pl-8 pr-2 py-1.5 w-40 border-none"
+          />
         </div>
       </div>
 
@@ -655,9 +856,11 @@ function FriendsView() {
             {filteredFriends.map(friend => (
               <div key={friend.userId} className="flex items-center gap-3 px-2 py-3 rounded-lg hover:bg-dc-hover transition-colors border-t border-dc-divider/20">
                 <div className="relative">
-                  <div className="w-8 h-8 rounded-full bg-dc-brand flex items-center justify-center text-white text-sm font-bold">
-                    {friend.user.username[0].toUpperCase()}
-                  </div>
+                  <Avatar
+                    src={friend.user.avatar}
+                    name={friend.user.username}
+                    className="w-8 h-8 rounded-full bg-dc-brand text-white text-sm font-bold overflow-hidden"
+                  />
                   <div className={`absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full border-[3px] border-dc-chat ${statusColors[friend.user.status]}`}></div>
                 </div>
                 <div className="flex-1">
@@ -665,14 +868,77 @@ function FriendsView() {
                   <p className="text-xs text-dc-text-muted">{friend.user.status === 'online' ? 'Online' : friend.user.status === 'idle' ? 'Idle' : 'Offline'}</p>
                 </div>
                 <div className="flex items-center gap-2">
-                  <button className="w-9 h-9 rounded-full bg-dc-sidebar flex items-center justify-center text-dc-text-muted hover:text-dc-text transition-colors">
-                    <MessageCircle className="w-5 h-5" />
-                  </button>
-                  <button className="w-9 h-9 rounded-full bg-dc-sidebar flex items-center justify-center text-dc-text-muted hover:text-dc-text transition-colors">
-                    <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
-                      <path d="M12 2a3 3 0 0 0-3 3v4a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Zm0 14c-4 0-7 2-7 4v2h14v-2c0-2-3-4-7-4Z"/>
-                    </svg>
-                  </button>
+                  {friend.status === 'incoming' && (
+                    <>
+                      <button
+                        onClick={async () => { if (await acceptFriend(friend.userId)) addNotification('Friend added', `You and @${friend.user.username} are friends.`, 'success'); }}
+                        title="Accept request"
+                        className="px-3 h-9 rounded-full bg-dc-brand text-white text-xs font-medium hover:bg-dc-brand-hover"
+                      >
+                        Accept
+                      </button>
+                      <button
+                        onClick={() => declineFriend(friend.userId)}
+                        title="Reject request"
+                        className="px-3 h-9 rounded-full bg-dc-input text-xs text-dc-text-muted hover:text-dc-text"
+                      >
+                        Reject
+                      </button>
+                    </>
+                  )}
+                  {friend.status === 'pending' && (
+                    <button
+                      onClick={() => declineFriend(friend.userId)}
+                      title="Cancel request"
+                      className="px-3 h-9 rounded-full bg-dc-input text-xs text-dc-text-muted hover:text-dc-text"
+                    >
+                      Cancel
+                    </button>
+                  )}
+                  {(friend.status === 'accepted' || friend.status === 'incoming') && (
+                    <button
+                      onClick={() => createDirectMessage(friend.userId, friend.user)}
+                      title="Message"
+                      className="w-9 h-9 rounded-full bg-dc-sidebar flex items-center justify-center text-dc-text-muted hover:text-dc-text transition-colors"
+                    >
+                      <MessageCircle className="w-5 h-5" />
+                    </button>
+                  )}
+                  {friend.status === 'accepted' && (
+                    <>
+                      <button
+                        onClick={async () => {
+                          if (await removeFriend(friend.userId)) addNotification('Friend removed', `@${friend.user.username} was removed.`, 'success');
+                          else addNotification('Error', 'Could not remove friend.', 'error');
+                        }}
+                        title="Remove friend"
+                        className="w-9 h-9 rounded-full bg-dc-sidebar flex items-center justify-center text-dc-text-muted hover:text-dc-red transition-colors"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={async () => {
+                          if (await blockUser(friend.userId)) addNotification('User blocked', `@${friend.user.username} was blocked.`, 'success');
+                          else addNotification('Error', 'Could not block user.', 'error');
+                        }}
+                        title="Block user"
+                        className="w-9 h-9 rounded-full bg-dc-sidebar flex items-center justify-center text-dc-text-muted hover:text-dc-red transition-colors"
+                      >
+                        <Ban className="w-4 h-4" />
+                      </button>
+                    </>
+                  )}
+                  {friend.status === 'blocked' && (
+                    <button
+                      onClick={async () => {
+                        if (await unblockUser(friend.userId)) addNotification('User unblocked', `@${friend.user.username} can reach you again.`, 'success');
+                      }}
+                      title="Unblock user"
+                      className="px-3 h-9 rounded-full bg-dc-sidebar text-xs text-dc-text-muted hover:text-dc-text transition-colors"
+                    >
+                      Unblock
+                    </button>
+                  )}
                 </div>
               </div>
             ))}

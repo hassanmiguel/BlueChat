@@ -19,6 +19,7 @@ export interface Server {
   icon: string;
   banner?: string;
   ownerId: string;
+  inviteCode?: string;
   memberCount: number;
   channels: Channel[];
   roles: Role[];
@@ -80,8 +81,9 @@ export interface Attachment {
   id: string;
   filename: string;
   url: string;
-  type: 'image' | 'video' | 'file';
+  type: 'image' | 'video' | 'audio' | 'file';
   size: number;
+  mimeType?: string;
 }
 
 export interface Reaction {
@@ -96,7 +98,11 @@ export interface DirectMessage {
   participants: User[];
   isGroup: boolean;
   name?: string;
+  description?: string;
+  avatar?: string;
+  ownerId?: string;
   lastMessage?: Message;
+  unreadCount?: number;
 }
 
 // Auth types
@@ -131,4 +137,5 @@ export interface Friend {
   userId: string;
   user: User;
   status: 'accepted' | 'pending' | 'blocked' | 'incoming';
+  requestId?: string;
 }

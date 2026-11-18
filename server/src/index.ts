@@ -2,77 +2,123 @@ import express from 'express';
 import cors from 'cors';
 import { createServer } from 'http';
 import { Server as SocketServer } from 'socket.io';
-import dotenv from 'dotenv';
 import rateLimit from 'express-rate-limit';
+import path from 'path';
+import { config } from './config.js';
 
 import { authRouter } from './routes/auth.js';
+import { oauthRouter } from './routes/oauth.js';
 import { serverRouter } from './routes/servers.js';
 import { channelRouter } from './routes/channels.js';
 import { messageRouter } from './routes/messages.js';
 import { dmRouter } from './routes/dms.js';
 import { friendRouter } from './routes/friends.js';
+import { userRouter } from './routes/users.js';
+import { uploadRouter } from './routes/upload.js';
+import { moderationRouter } from './routes/moderation.js';
+import { notificationRouter } from './routes/notifications.js';
+import { searchRouter } from './routes/search.js';
+import { verifyCsrf } from './middleware/auth.js';
 import { setupSocketHandlers } from './socket/index.js';
-
-dotenv.config();
 
 const app = express();
 const httpServer = createServer(app);
 const io = new SocketServer(httpServer, {
   cors: {
-    origin: process.env.CLIENT_URL || 'http://localhost:5173',
+    origin: config.clientUrl,
     credentials: true,
   },
 });
 
-// Middleware
-app.use(cors({
-  origin: process.env.CLIENT_URL || 'http://localhost:5173',
-  credentials: true,
-}));
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true }));
+app.disable('x-powered-by');
+app.set('trust proxy', 1);
 
-// Rate limiting
-const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100,
+app.use((_req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.setHeader('Permissions-Policy', 'geolocation=(), microphone=(self), camera=(self), display-capture=(self)');
+  if (config.isProduction) {
+    res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+  }
+  next();
+});
+
+app.use(cors({
+  origin: config.clientUrl,
+  credentials: true,
+  methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-CSRF-Token', 'X-Upload-Field'],
+}));
+app.use(express.json({ limit: '1mb' }));
+app.use(express.urlencoded({ extended: true, limit: '1mb' }));
+
+const apiLimiter = rateLimit({
+  windowMs: config.rateLimitWindowMs,
+  max: config.rateLimitMax,
+  standardHeaders: true,
+  legacyHeaders: false,
   message: { error: 'Too many requests, please try again later' },
 });
-app.use('/api/', limiter);
+app.use('/api/', apiLimiter);
 
-// Health check
-app.get('/api/health', (req, res) => {
+const authLimiter = rateLimit({
+  windowMs: config.rateLimitWindowMs,
+  max: config.authRateLimitMax,
+  standardHeaders: true,
+  legacyHeaders: false,
+  skipSuccessfulRequests: true,
+  message: { error: 'Too many authentication attempts, please try again later' },
+});
+app.use('/api/auth/login', authLimiter);
+app.use('/api/auth/register', authLimiter);
+app.use('/api/auth/password', authLimiter);
+app.use('/api/auth/oauth', authLimiter);
+
+app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
-// Routes
+app.use('/api/', verifyCsrf);
+
+app.use('/uploads', express.static(path.resolve(process.cwd(), process.env.UPLOAD_DIR || './uploads'), {
+  fallthrough: false,
+  setHeaders: (res) => res.setHeader('X-Content-Type-Options', 'nosniff'),
+}));
+
 app.use('/api/auth', authRouter);
+app.use('/api/auth/oauth', oauthRouter);
 app.use('/api/servers', serverRouter);
 app.use('/api/channels', channelRouter);
 app.use('/api/messages', messageRouter);
 app.use('/api/dms', dmRouter);
 app.use('/api/friends', friendRouter);
+app.use('/api/users', userRouter);
+app.use('/api/upload', uploadRouter);
+app.use('/api/notifications', notificationRouter);
+app.use('/api/moderation', moderationRouter);
+app.use('/api/search', searchRouter);
 
-// Socket.io
 setupSocketHandlers(io);
-
-// Make io accessible to routes
 app.set('io', io);
 
-// Error handling
-app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+app.use((_req, res) => {
+  res.status(404).json({ error: 'Not found' });
+});
+
+app.use((err: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  if (err?.type === 'entity.parse.failed') {
+    return res.status(400).json({ error: 'Invalid JSON body' });
+  }
   console.error('Error:', err);
   res.status(err.status || 500).json({
-    error: err.message || 'Internal server error',
+    error: config.isProduction ? 'Internal server error' : err.message || 'Internal server error',
   });
 });
 
-// Start server
-const PORT = process.env.PORT || 3001;
-httpServer.listen(PORT, () => {
-  console.log(`🚀 blueChat server running on port ${PORT}`);
-  console.log(`📡 Socket.io ready`);
-  console.log(`🌐 API: http://localhost:${PORT}/api`);
+httpServer.listen(config.port, () => {
+  console.log(`blueChat server running on port ${config.port}`);
+  console.log('Socket.io ready');
 });
 
 export { io };

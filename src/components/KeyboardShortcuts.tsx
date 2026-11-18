@@ -23,23 +23,10 @@ export default function KeyboardShortcuts() {
   const shortcuts = [
     { category: 'Navigation', items: [
       { keys: ['Ctrl', 'K'], description: 'Quick switcher' },
-      { keys: ['Ctrl', 'Shift', 'A'], description: 'Create invite' },
-      { keys: ['Ctrl', 'Shift', 'S'], description: 'Server settings' },
-      { keys: ['Ctrl', ','], description: 'User settings' },
+      { keys: ['Ctrl', '/'], description: 'Show shortcuts' },
     ]},
     { category: 'Chat', items: [
       { keys: ['Enter'], description: 'Send message' },
-      { keys: ['Shift', 'Enter'], description: 'New line' },
-      { keys: ['↑'], description: 'Edit last message' },
-      { keys: ['Ctrl', '/'], description: 'Show shortcuts' },
-    ]},
-    { category: 'Formatting', items: [
-      { keys: ['*text*'], description: 'Bold' },
-      { keys: ['_text_'], description: 'Italic' },
-      { keys: ['~~text~~'], description: 'Strikethrough' },
-      { keys: ['||text||'], description: 'Spoiler' },
-      { keys: ['`code`'], description: 'Inline code' },
-      { keys: ['```code```'], description: 'Code block' },
     ]},
   ];
 

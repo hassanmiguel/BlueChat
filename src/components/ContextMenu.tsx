@@ -7,6 +7,7 @@ interface ContextMenuProps {
   y: number;
   isCurrentUser: boolean;
   onReply: () => void;
+  onAddReaction: () => void;
   onCopyText: () => void;
   onPin: () => void;
   onCopyLink: () => void;
@@ -16,7 +17,7 @@ interface ContextMenuProps {
   onClose: () => void;
 }
 
-export default function ContextMenu({ x, y, isCurrentUser, onReply, onCopyText, onPin, onCopyLink, onMarkUnread, onEdit, onDelete, onClose }: ContextMenuProps) {
+export default function ContextMenu({ x, y, isCurrentUser, onReply, onAddReaction, onCopyText, onPin, onCopyLink, onMarkUnread, onEdit, onDelete, onClose }: ContextMenuProps) {
   const [position, setPosition] = useState({ x, y });
 
   useEffect(() => {
@@ -44,7 +45,7 @@ export default function ContextMenu({ x, y, isCurrentUser, onReply, onCopyText, 
 
   const menuItems = [
     { icon: MessageSquare, label: 'Reply', action: onReply },
-    { icon: Smile, label: 'Add Reaction', action: () => {} },
+    { icon: Smile, label: 'Add Reaction', action: onAddReaction },
     { icon: Pin, label: 'Pin Message', action: onPin },
     { icon: Copy, label: 'Copy Text', action: onCopyText },
     { icon: Link, label: 'Copy Message Link', action: onCopyLink },

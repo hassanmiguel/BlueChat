@@ -1,7 +1,10 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { useAuthStore } from '../stores/authStore';
+import { api } from '../services/api';
 import { MessageCircle, Eye, EyeOff } from 'lucide-react';
+
+const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
 
 interface LoginPageProps {
   onSwitchToRegister: () => void;
@@ -12,12 +15,14 @@ export default function LoginPage({ onSwitchToRegister }: LoginPageProps) {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
+  const [forgotMode, setForgotMode] = useState(false);
+  const [forgotStatus, setForgotStatus] = useState('');
   const { login, isLoading } = useAuthStore();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
-    
+
     if (!email || !password) {
       setError('Please fill in all fields');
       return;
@@ -25,8 +30,18 @@ export default function LoginPage({ onSwitchToRegister }: LoginPageProps) {
 
     const success = await login(email, password);
     if (!success) {
-      setError('Invalid email or password');
+      setError(useAuthStore.getState().error || 'Invalid email or password');
     }
+  };
+
+  const handleForgot = async () => {
+    setForgotStatus('');
+    if (!email) {
+      setForgotStatus('Enter your email above first.');
+      return;
+    }
+    const response = await api.forgotPassword(email);
+    setForgotStatus(response.success ? 'Reset link sent.' : response.error || 'Request failed.');
   };
 
   return (
@@ -128,10 +143,30 @@ export default function LoginPage({ onSwitchToRegister }: LoginPageProps) {
             </div>
 
             <div className="flex justify-end">
-              <button type="button" className="text-sm text-dc-text-link hover:underline">
+              <button
+                type="button"
+                onClick={() => setForgotMode((value) => !value)}
+                className="text-sm text-dc-text-link hover:underline"
+              >
                 Forgot your password?
               </button>
             </div>
+
+            {forgotMode && (
+              <div className="bg-dc-darker border border-dc-divider rounded-lg p-3">
+                <p className="text-xs text-dc-text-muted mb-2">
+                  Enter your email above, then request a reset link.
+                </p>
+                <button
+                  type="button"
+                  onClick={handleForgot}
+                  className="w-full bg-dc-brand text-white text-sm py-2 rounded"
+                >
+                  Send reset link
+                </button>
+                {forgotStatus && <p className="text-xs mt-2 text-dc-text-muted">{forgotStatus}</p>}
+              </div>
+            )}
 
             <motion.button
               type="submit"
@@ -160,6 +195,7 @@ export default function LoginPage({ onSwitchToRegister }: LoginPageProps) {
             <motion.button
               whileHover={{ scale: 1.02 }}
               whileTap={{ scale: 0.98 }}
+              onClick={() => { window.location.href = `${API_BASE}/auth/oauth/google`; }}
               className="flex-1 bg-white text-gray-800 font-medium py-2.5 rounded-lg flex items-center justify-center gap-2 hover:bg-gray-100 transition-colors"
             >
               <svg className="w-5 h-5" viewBox="0 0 24 24">
@@ -173,6 +209,7 @@ export default function LoginPage({ onSwitchToRegister }: LoginPageProps) {
             <motion.button
               whileHover={{ scale: 1.02 }}
               whileTap={{ scale: 0.98 }}
+              onClick={() => { window.location.href = `${API_BASE}/auth/oauth/github`; }}
               className="flex-1 bg-[#24292e] text-white font-medium py-2.5 rounded-lg flex items-center justify-center gap-2 hover:bg-[#2f363d] transition-colors"
             >
               <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">

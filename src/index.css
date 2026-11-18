@@ -1,26 +1,81 @@
 @import "tailwindcss";
 
 @theme {
-  --color-dc-dark: #1e1f22;
-  --color-dc-darker: #1a1b1e;
-  --color-dc-sidebar: #2b2d31;
-  --color-dc-channel: #313338;
-  --color-dc-chat: #313338;
-  --color-dc-member: #2b2d31;
-  --color-dc-input: #383a40;
-  --color-dc-hover: #35373c;
-  --color-dc-active: #404249;
-  --color-dc-text: #dbdee1;
-  --color-dc-text-muted: #949ba4;
-  --color-dc-text-link: #00a8fc;
-  --color-dc-brand: #5865f2;
-  --color-dc-brand-hover: #4752c4;
-  --color-dc-green: #23a559;
-  --color-dc-yellow: #f0b232;
-  --color-dc-red: #da373c;
-  --color-dc-divider: #3f4147;
-  --color-dc-server-bg: #1e1f22;
-  --color-dc-popout: #232428;
+  --color-dc-dark: var(--dc-dark);
+  --color-dc-darker: var(--dc-darker);
+  --color-dc-sidebar: var(--dc-sidebar);
+  --color-dc-channel: var(--dc-channel);
+  --color-dc-chat: var(--dc-chat);
+  --color-dc-member: var(--dc-member);
+  --color-dc-input: var(--dc-input);
+  --color-dc-hover: var(--dc-hover);
+  --color-dc-active: var(--dc-active);
+  --color-dc-text: var(--dc-text);
+  --color-dc-text-muted: var(--dc-text-muted);
+  --color-dc-text-link: var(--dc-text-link);
+  --color-dc-brand: var(--dc-accent);
+  --color-dc-brand-hover: var(--dc-brand-hover);
+  --color-dc-green: var(--dc-green);
+  --color-dc-yellow: var(--dc-yellow);
+  --color-dc-red: var(--dc-red);
+  --color-dc-divider: var(--dc-divider);
+  --color-dc-server-bg: var(--dc-dark);
+  --color-dc-popout: var(--dc-popout);
+}
+
+:root {
+  --dc-dark: #1e1f22;
+  --dc-darker: #1a1b1e;
+  --dc-sidebar: #2b2d31;
+  --dc-channel: #313338;
+  --dc-chat: #313338;
+  --dc-member: #2b2d31;
+  --dc-input: #383a40;
+  --dc-hover: #35373c;
+  --dc-active: #404249;
+  --dc-text: #dbdee1;
+  --dc-text-muted: #949ba4;
+  --dc-text-link: #00a8fc;
+  --dc-accent: #3a86ff;
+  --dc-brand-hover: color-mix(in srgb, var(--dc-accent) 82%, #000);
+  --dc-green: #23a559;
+  --dc-yellow: #f0b232;
+  --dc-red: #da373c;
+  --dc-divider: #3f4147;
+  --dc-popout: #232428;
+  --dc-strong-text: #ffffff;
+  color-scheme: dark;
+}
+
+:root[data-theme='light'] {
+  --dc-dark: #eef2f9;
+  --dc-darker: #e4eaf4;
+  --dc-sidebar: #f6f8fc;
+  --dc-channel: #ffffff;
+  --dc-chat: #f7f9fd;
+  --dc-member: #f1f5fb;
+  --dc-input: #e7edf7;
+  --dc-hover: #e3eaf5;
+  --dc-active: #d9e4f5;
+  --dc-text: #1c2b45;
+  --dc-text-muted: #64748b;
+  --dc-text-link: #2563eb;
+  --dc-green: #16a34a;
+  --dc-yellow: #d97706;
+  --dc-red: #dc2626;
+  --dc-divider: #d5deeb;
+  --dc-popout: #ffffff;
+  --dc-strong-text: #162747;
+  color-scheme: light;
+}
+
+[data-theme='light'] .text-white:not(button):not(a):not([role='button']) {
+  color: var(--dc-strong-text);
+}
+
+[data-theme='light'] button.text-white,
+[data-theme='light'] .bg-dc-brand .text-white {
+  color: #ffffff;
 }
 
 * {
@@ -34,8 +89,8 @@ html, body, #root {
   height: 100%;
   overflow: hidden;
   font-family: 'gg sans', 'Noto Sans', 'Helvetica Neue', Helvetica, Arial, sans-serif;
-  background-color: #313338;
-  color: #dbdee1;
+  background-color: var(--dc-chat);
+  color: var(--dc-text);
 }
 
 /* Custom scrollbar */
@@ -49,12 +104,12 @@ html, body, #root {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #1a1b1e;
+  background: var(--dc-divider);
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #111214;
+  background: var(--dc-text-muted);
 }
 
 /* Animations */

@@ -2,7 +2,7 @@ import { Server as SocketServer, Socket } from 'socket.io';
 import jwt from 'jsonwebtoken';
 import { config } from '../config.js';
 import { prisma } from '../middleware/auth.js';
-import { isServerMember } from '../middleware/authz.js';
+import { hasServerPermission, isServerMember } from '../middleware/authz.js';
 
 interface AuthenticatedSocket extends Socket {
   userId?: string;
@@ -100,8 +100,10 @@ export function setupSocketHandlers(io: SocketServer) {
 
       if (!token) return next(new Error('Authentication required'));
 
-      const decoded = jwt.verify(token, config.jwtSecret) as { userId: string; type?: string };
-      if (decoded.type && decoded.type !== 'access') return next(new Error('Invalid token'));
+      const decoded = jwt.verify(token, config.jwtSecret) as { userId?: unknown; type?: unknown };
+      if (decoded.type !== 'access' || typeof decoded.userId !== 'string' || !decoded.userId) {
+        return next(new Error('Invalid token'));
+      }
 
       const user = await prisma.user.findUnique({
         where: { id: decoded.userId },
@@ -314,7 +316,7 @@ export function setupSocketHandlers(io: SocketServer) {
         where: { id: channelId },
         select: { serverId: true },
       });
-      if (!channel || !(await isServerMember(userId, channel.serverId))) return;
+      if (!channel || !(await hasServerPermission(userId, channel.serverId, 'connect'))) return;
 
       socket.join(`voice:${channelId}`);
       socket.to(`voice:${channelId}`).emit('voice:user-joined', {
@@ -333,18 +335,29 @@ export function setupSocketHandlers(io: SocketServer) {
     }));
 
     socket.on('voice:leave', (channelId: string) => {
-      if (typeof channelId === 'string') {
-        socket.leave(`voice:${channelId}`);
-        socket.to(`voice:${channelId}`).emit('voice:user-left', { channelId, userId });
-      }
+      if (typeof channelId !== 'string' || channelId.length > 64) return;
+      const room = `voice:${channelId}`;
+      if (!socket.rooms.has(room)) return;
+      socket.leave(room);
+      socket.to(room).emit('voice:user-left', { channelId, userId });
     });
 
-    socket.on('voice:mute', ({ channelId, isMuted }: { channelId: string; isMuted: boolean }) => {
-      socket.to(`voice:${channelId}`).emit('voice:user-muted', { channelId, userId, isMuted });
+    socket.on('voice:mute', (payload: unknown) => {
+      if (!payload || typeof payload !== 'object') return;
+      const { channelId, isMuted } = payload as { channelId?: unknown; isMuted?: unknown };
+      if (typeof channelId !== 'string' || channelId.length > 64 || typeof isMuted !== 'boolean') return;
+      const room = `voice:${channelId}`;
+      if (!socket.rooms.has(room)) return;
+      socket.to(room).emit('voice:user-muted', { channelId, userId, isMuted });
     });
 
-    socket.on('voice:deafen', ({ channelId, isDeafened }: { channelId: string; isDeafened: boolean }) => {
-      socket.to(`voice:${channelId}`).emit('voice:user-deafened', { channelId, userId, isDeafened });
+    socket.on('voice:deafen', (payload: unknown) => {
+      if (!payload || typeof payload !== 'object') return;
+      const { channelId, isDeafened } = payload as { channelId?: unknown; isDeafened?: unknown };
+      if (typeof channelId !== 'string' || channelId.length > 64 || typeof isDeafened !== 'boolean') return;
+      const room = `voice:${channelId}`;
+      if (!socket.rooms.has(room)) return;
+      socket.to(room).emit('voice:user-deafened', { channelId, userId, isDeafened });
     });
 
     socket.on('presence:update', safe(async (status: string) => {

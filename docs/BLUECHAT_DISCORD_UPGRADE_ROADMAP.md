@@ -103,6 +103,8 @@ These observations are based on source inspection. They do not certify that ever
 ### Implemented in this branch
 
 - Replaced unconditional Express proxy trust (one hop) with explicit TRUST_PROXY_HOPS configuration. Default is zero (no trusted proxy). Deployments behind a known reverse proxy should set the exact trusted hop count. This prevents blindly trusting forwarded client-IP headers when no trusted proxy is configured.
+- Tightened Socket.IO authentication to require a valid access-token type and a non-empty string user ID.
+- Fixed voice-room authorization: joining now requires the server-side connect permission, and mute/deafen/leave events are accepted only from sockets that actually joined that voice room. This prevents clients from spoofing another room's voice state.
 
 ### Verify and strengthen before production
 

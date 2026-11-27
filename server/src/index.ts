@@ -31,7 +31,7 @@ const io = new SocketServer(httpServer, {
 });
 
 app.disable('x-powered-by');
-app.set('trust proxy', 1);
+app.set('trust proxy', config.trustProxyHops > 0 ? config.trustProxyHops : false);
 
 app.use((_req, res, next) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');

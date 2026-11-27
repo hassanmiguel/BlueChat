@@ -25,6 +25,10 @@ export const config = {
   nodeEnv: process.env.NODE_ENV || 'development',
   isProduction: process.env.NODE_ENV === 'production',
   port: int('PORT', 3001),
+  // Set to the number of trusted reverse-proxy hops in production. Keep 0 when
+  // the Node process is directly exposed so client-supplied X-Forwarded-For
+  // headers cannot influence IP-based rate limiting.
+  trustProxyHops: Math.max(0, int('TRUST_PROXY_HOPS', 0)),
   clientUrl: required('CLIENT_URL', 'http://localhost:3000'),
   jwtSecret: required('JWT_SECRET'),
   jwtExpiresIn: process.env.JWT_EXPIRES_IN || '7d',

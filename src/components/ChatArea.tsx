@@ -438,6 +438,49 @@ export default function ChatArea() {
   );
 }
 
+function PollCard({ poll, channelId }: { poll: NonNullable<Message['poll']>; channelId: string }) {
+  const [current, setCurrent] = useState(poll);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => setCurrent(poll), [poll]);
+  const closed = Boolean(current.closedAt) || Boolean(current.expiresAt && new Date(current.expiresAt) <= new Date());
+  const total = current.options.reduce((sum, option) => sum + (option.voteCount || 0), 0);
+  const vote = async (optionId: string) => {
+    if (busy || closed) return;
+    setBusy(true);
+    const response = await api.votePoll(current.id, [optionId]);
+    if (response.success) {
+      const refreshed = await api.getChannelPolls(channelId);
+      const latest = refreshed.data?.find((item: any) => item.id === current.id);
+      if (latest) setCurrent({
+        ...latest,
+        options: latest.options.map((option: any) => ({
+          id: option.id, label: option.label, voteCount: option.voteCount,
+          votedByMe: option.votedByMe, voters: option.voters,
+        })),
+      });
+    }
+    setBusy(false);
+  };
+  return (
+    <div className="mt-3 max-w-lg rounded-xl border border-dc-divider bg-dc-sidebar/70 p-4">
+      <div className="flex items-center justify-between gap-2"><p className="font-semibold text-sm">{current.question}</p><span className="text-[10px] uppercase tracking-wide text-dc-text-muted">{closed ? 'Closed' : current.multipleChoice ? 'Multiple choice' : 'Poll'}</span></div>
+      <div className="mt-3 space-y-2">
+        {current.options.map((option) => {
+          const count = option.voteCount || 0;
+          const percent = total ? Math.round(count / total * 100) : 0;
+          return (
+            <button key={option.id} disabled={busy || closed} onClick={() => void vote(option.id)} className="relative w-full overflow-hidden rounded-lg border border-dc-divider bg-dc-channel px-3 py-2 text-left text-sm disabled:cursor-default">
+              <span className="absolute inset-y-0 left-0 bg-dc-brand/20" style={{ width: `${percent}%` }} />
+              <span className="relative flex justify-between gap-3"><span>{option.label}{option.votedByMe ? ' ✓' : ''}</span><span className="text-xs text-dc-text-muted">{count} · {percent}%</span></span>
+            </button>
+          );
+        })}
+      </div>
+      <p className="mt-2 text-[11px] text-dc-text-muted">{total} vote{total === 1 ? '' : 's'}{current.anonymous ? ' · Anonymous poll' : ''}</p>
+    </div>
+  );
+}
+
 // Message Row Component
 interface MessageRowProps {
   message: Message;
@@ -544,6 +587,8 @@ function MessageRow({ message, isCurrentUser, showAvatar, onReply, onEdit, onDel
               {message.editedAt && <span className="text-xs text-dc-text-muted ml-1">(edited)</span>}
             </div>
           )}
+
+          {message.poll && <PollCard poll={message.poll} channelId={message.channelId} />}
 
           {message.attachments.length > 0 && (
             <div className="flex flex-wrap gap-2 mt-2">

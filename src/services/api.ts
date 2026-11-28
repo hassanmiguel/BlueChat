@@ -508,6 +508,212 @@ class ApiClient {
   async searchMessages(channelId: string, query: string) {
     return this.request(`/channels/${channelId}/search?q=${encodeURIComponent(query)}`);
   }
+
+  // Community upgrade APIs: polls, saved messages, read cursors, scheduling and events.
+  async createPoll(channelId: string, data: { messageId: string; question: string; options: string[]; multipleChoice?: boolean; anonymous?: boolean; expiresAt?: string }) {
+    return this.request(`/features/channels/${channelId}/polls`, { method: 'POST', body: JSON.stringify(data) });
+  }
+
+  async getChannelPolls(channelId: string) {
+    return this.request(`/features/channels/${channelId}/polls`);
+  }
+
+  async votePoll(pollId: string, optionIds: string[]) {
+    return this.request(`/features/polls/${pollId}/votes`, { method: 'POST', body: JSON.stringify({ optionIds }) });
+  }
+
+  async closePoll(pollId: string) {
+    return this.request(`/features/polls/${pollId}/close`, { method: 'POST' });
+  }
+
+  async getSavedMessages() {
+    return this.request('/features/saved-messages');
+  }
+
+  async saveMessage(messageId: string) {
+    return this.request(`/features/messages/${messageId}/save`, { method: 'POST' });
+  }
+
+  async unsaveMessage(messageId: string) {
+    return this.request(`/features/messages/${messageId}/save`, { method: 'DELETE' });
+  }
+
+  async updateChannelReadState(channelId: string, messageId?: string) {
+    return this.request(`/features/channels/${channelId}/read-state`, { method: 'PUT', body: JSON.stringify({ messageId }) });
+  }
+
+  async getChannelReadState(channelId: string) {
+    return this.request(`/features/channels/${channelId}/read-state`);
+  }
+
+  async scheduleMessage(channelId: string, content: string, scheduledAt: string) {
+    return this.request(`/features/channels/${channelId}/scheduled-messages`, { method: 'POST', body: JSON.stringify({ content, scheduledAt }) });
+  }
+
+  async getScheduledMessages() {
+    return this.request('/features/scheduled-messages');
+  }
+
+  async cancelScheduledMessage(id: string) {
+    return this.request(`/features/scheduled-messages/${id}`, { method: 'DELETE' });
+  }
+
+  async createServerEvent(serverId: string, data: { title: string; description?: string; channelId?: string; location?: string; startsAt: string; endsAt?: string }) {
+    return this.request(`/features/servers/${serverId}/events`, { method: 'POST', body: JSON.stringify(data) });
+  }
+
+  async getServerEvents(serverId: string) {
+    return this.request(`/features/servers/${serverId}/events`);
+  }
+
+  async rsvpEvent(eventId: string, status: 'GOING' | 'INTERESTED' | 'NOT_GOING') {
+    return this.request(`/features/events/${eventId}/rsvp`, { method: 'PUT', body: JSON.stringify({ status }) });
+  }
+
+  async cancelServerEvent(eventId: string) {
+    return this.request(`/features/events/${eventId}`, { method: 'DELETE' });
+  }
+
+  // Developer platform and privacy-first integrations.
+  async getBotApplications() {
+    return this.request('/features/developer/applications');
+  }
+
+  async createBotApplication(data: { name: string; description?: string; isPublic?: boolean }) {
+    return this.request('/features/developer/applications', { method: 'POST', body: JSON.stringify(data) });
+  }
+
+  async createBotToken(applicationId: string, scopes: string[], expiresAt?: string) {
+    return this.request(`/features/developer/applications/${applicationId}/tokens`, { method: 'POST', body: JSON.stringify({ scopes, expiresAt }) });
+  }
+
+  async revokeBotToken(applicationId: string, tokenId: string) {
+    return this.request(`/features/developer/applications/${applicationId}/tokens/${tokenId}`, { method: 'DELETE' });
+  }
+
+  async getBotInstallations(serverId: string) {
+    return this.request(`/features/servers/${serverId}/bot-installations`);
+  }
+
+  async installBot(serverId: string, applicationId: string, permissions: string[] = ['read_messages']) {
+    return this.request(`/features/servers/${serverId}/bot-installations`, { method: 'POST', body: JSON.stringify({ applicationId, permissions }) });
+  }
+
+  async uninstallBot(serverId: string, applicationId: string) {
+    return this.request(`/features/servers/${serverId}/bot-installations/${applicationId}`, { method: 'DELETE' });
+  }
+
+  async getServerWebhooks(serverId: string) {
+    return this.request(`/features/servers/${serverId}/webhooks`);
+  }
+
+  async createServerWebhook(serverId: string, channelId: string, name: string) {
+    return this.request(`/features/servers/${serverId}/webhooks`, { method: 'POST', body: JSON.stringify({ channelId, name }) });
+  }
+
+  async deleteServerWebhook(serverId: string, webhookId: string) {
+    return this.request(`/features/servers/${serverId}/webhooks/${webhookId}`, { method: 'DELETE' });
+  }
+
+  async getServerAiSettings(serverId: string) {
+    return this.request(`/features/servers/${serverId}/ai-settings`);
+  }
+
+  async updateServerAiSettings(serverId: string, settings: {
+    enabled: boolean; provider?: string | null; model?: string | null;
+    allowSummary: boolean; allowSearch: boolean; allowTranscription: boolean; retentionDays: number;
+  }) {
+    return this.request(`/features/servers/${serverId}/ai-settings`, { method: 'PUT', body: JSON.stringify(settings) });
+  }
+
+  async summarizeChannel(serverId: string, channelId: string) {
+    return this.request<{ summary: string; messageCount: number; model: string }>(`/features/servers/${serverId}/ai/summarize`, {
+      method: 'POST', body: JSON.stringify({ channelId }),
+    });
+  }
+
+  async getAutoModSettings(serverId: string) {
+    return this.request(`/features/servers/${serverId}/automod`);
+  }
+
+  async updateAutoModSettings(serverId: string, enabled: boolean, blockedWords: string[]) {
+    return this.request(`/features/servers/${serverId}/automod`, { method: 'PUT', body: JSON.stringify({ enabled, blockedWords }) });
+  }
+
+  async createAutoModRule(serverId: string, rule: {
+    type: 'BLOCKED_PHRASE' | 'MAX_MENTIONS' | 'MAX_LINKS' | 'DUPLICATE_MESSAGE';
+    pattern?: string; threshold?: number; enabled?: boolean;
+  }) {
+    return this.request(`/features/servers/${serverId}/automod/rules`, { method: 'POST', body: JSON.stringify(rule) });
+  }
+
+  async deleteAutoModRule(serverId: string, ruleId: string) {
+    return this.request(`/features/servers/${serverId}/automod/rules/${ruleId}`, { method: 'DELETE' });
+  }
+
+  async getSubscriptions() {
+    return this.request('/features/subscriptions');
+  }
+
+  async getChannelPermissionOverrides(channelId: string) {
+    return this.request(`/channels/${channelId}/permissions`);
+  }
+
+  async setChannelPermissionOverride(channelId: string, roleId: string, allow: string[], deny: string[]) {
+    return this.request(`/channels/${channelId}/permissions/${roleId}`, { method: 'PUT', body: JSON.stringify({ allow, deny }) });
+  }
+
+  async deleteChannelPermissionOverride(channelId: string, roleId: string) {
+    return this.request(`/channels/${channelId}/permissions/${roleId}`, { method: 'DELETE' });
+  }
+
+  async getServerInvites(serverId: string) {
+    return this.request(`/servers/${serverId}/invites`);
+  }
+
+  async createServerInvite(serverId: string, options: { maxUses?: number | null; expiresInSeconds?: number } = {}) {
+    return this.request(`/servers/${serverId}/invites`, { method: 'POST', body: JSON.stringify(options) });
+  }
+
+  async deleteServerInvite(serverId: string, inviteId: string) {
+    return this.request(`/servers/${serverId}/invites/${inviteId}`, { method: 'DELETE' });
+  }
+
+  async getServerOnboarding(serverId: string) {
+    return this.request(`/features/servers/${serverId}/onboarding`);
+  }
+
+  async updateServerOnboarding(serverId: string, settings: {
+    enabled: boolean; welcomeMessage?: string | null; rules: string[];
+    defaultChannelIds: string[]; requireRuleAccept: boolean;
+  }) {
+    return this.request(`/features/servers/${serverId}/onboarding`, { method: 'PUT', body: JSON.stringify(settings) });
+  }
+
+  async acceptServerRules(serverId: string) {
+    return this.request(`/features/servers/${serverId}/screening/accept`, { method: 'POST' });
+  }
+
+  async createLiveKitToken(channelId: string, publish = true) {
+    return this.request<{ token: string; serverUrl: string; roomName: string; expiresIn: number }>('/voice/token', {
+      method: 'POST', body: JSON.stringify({ channelId, publish }),
+    });
+  }
+
+  async getForumPosts(channelId: string, limit = 30) {
+    return this.request(`/features/channels/${channelId}/forum-posts?limit=${limit}`);
+  }
+
+  async createForumPost(channelId: string, data: { title: string; content: string; tags?: string[] }) {
+    return this.request(`/features/channels/${channelId}/forum-posts`, { method: 'POST', body: JSON.stringify(data) });
+  }
+
+  async updateForumPost(postId: string, updates: {
+    title?: string; content?: string; tags?: string[];
+    isLocked?: boolean; isPinned?: boolean; isArchived?: boolean;
+  }) {
+    return this.request(`/features/forum-posts/${postId}`, { method: 'PATCH', body: JSON.stringify(updates) });
+  }
 }
 
 export const api = new ApiClient(API_BASE);

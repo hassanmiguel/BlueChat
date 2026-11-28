@@ -1,4 +1,5 @@
 import { Router, Response } from 'express';
+import { randomBytes } from 'node:crypto';
 import { z } from 'zod';
 import { prisma, authenticate, AuthRequest } from '../middleware/auth.js';
 import {
@@ -6,6 +7,10 @@ import {
   requireServerManager,
   requireServerOwner,
   requireServerPermission,
+  canManageMember,
+  canManageRole,
+  PERMISSIONS,
+  canViewChannel,
 } from '../middleware/authz.js';
 import { logAudit } from '../utils/audit.js';
 
@@ -41,7 +46,13 @@ serverRouter.get('/', authenticate, async (req: AuthRequest, res: Response) => {
       where: { members: { some: { userId: req.userId } } },
       include: serverInclude,
     });
-    res.json(servers);
+    const visibleServers = await Promise.all(servers.map(async (server) => ({
+      ...server,
+      channels: (await Promise.all(server.channels.map(async (channel) =>
+        (await canViewChannel(req.userId!, channel.id)) ? channel : null
+      ))).filter(Boolean),
+    })));
+    res.json(visibleServers);
   } catch (error) {
     console.error('Get servers error:', error);
     res.status(500).json({ error: 'Failed to get servers' });
@@ -68,7 +79,7 @@ serverRouter.post('/', authenticate, async (req: AuthRequest, res: Response) => 
             {
               name: 'Member',
               color: '#949ba4',
-              permissions: ['send_messages', 'attach_files', 'connect', 'speak', 'video', 'screen_share'],
+              permissions: ['view_channel', 'read_message_history', 'send_messages', 'attach_files', 'connect', 'speak', 'video', 'screen_share', 'create_threads', 'create_polls', 'send_voice_messages'],
               position: 0,
             },
           ],
@@ -121,7 +132,10 @@ serverRouter.get('/:id', authenticate, requireServerMember, async (req: AuthRequ
       include: serverInclude,
     });
     if (!server) return res.status(404).json({ error: 'Server not found' });
-    res.json(server);
+    const visibleChannels = await Promise.all(server.channels.map(async (channel) =>
+      (await canViewChannel(req.userId!, channel.id)) ? channel : null
+    ));
+    res.json({ ...server, channels: visibleChannels.filter(Boolean) });
   } catch (error) {
     res.status(500).json({ error: 'Failed to get server' });
   }
@@ -164,22 +178,65 @@ serverRouter.post('/join', authenticate, async (req: AuthRequest, res: Response)
   try {
     const { inviteCode } = z.object({ inviteCode: z.string().trim().min(1).max(128) }).parse(req.body);
 
-    const server = await prisma.server.findUnique({
-      where: { inviteCode },
-      include: serverInclude,
+    const invite = await prisma.serverInvite.findUnique({ where: { code: inviteCode } });
+    const legacyServer = invite ? null : await prisma.server.findUnique({ where: { inviteCode }, select: { id: true } });
+    const serverId = invite?.serverId || legacyServer?.id;
+    if (!serverId) return res.status(404).json({ error: 'Invalid invite code' });
+    if (invite && invite.expiresAt && invite.expiresAt <= new Date()) return res.status(410).json({ error: 'Invite has expired' });
+    if (invite && invite.maxUses !== null && invite.uses >= invite.maxUses) return res.status(410).json({ error: 'Invite has reached its use limit' });
+
+    const server = await prisma.server.findUnique({ where: { id: serverId }, include: serverInclude });
+    if (!server) return res.status(404).json({ error: 'Server not found' });
+    const activeBan = await prisma.ban.findFirst({
+      where: { serverId, userId: req.userId!, OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }] },
     });
-    if (!server) return res.status(404).json({ error: 'Invalid invite code' });
+    if (activeBan) return res.status(403).json({ error: 'You are banned from this server' });
 
     const existingMember = await prisma.serverMember.findUnique({
-      where: { userId_serverId: { userId: req.userId!, serverId: server.id } },
+      where: { userId_serverId: { userId: req.userId!, serverId } },
     });
-    if (existingMember) return res.json(server);
+    if (existingMember) {
+      const visibleChannels = await Promise.all(server.channels.map(async (channel) =>
+        (await canViewChannel(req.userId!, channel.id)) ? channel : null
+      ));
+      return res.json({ ...server, channels: visibleChannels.filter(Boolean) });
+    }
 
-    await prisma.serverMember.create({
-      data: { userId: req.userId!, serverId: server.id },
-    });
-
-    res.json(server);
+    try {
+      await prisma.$transaction(async (tx) => {
+        if (invite) {
+          const consumed = await tx.serverInvite.updateMany({
+            where: {
+              id: invite.id,
+              AND: [
+                { OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }] },
+                { OR: [{ maxUses: null }, { uses: { lt: invite.maxUses ?? 0 } }] },
+              ],
+            },
+            data: { uses: { increment: 1 } },
+          });
+          if (consumed.count !== 1) throw new Error('INVITE_UNAVAILABLE');
+        }
+        const member = await tx.serverMember.create({ data: { userId: req.userId!, serverId } });
+        const defaultRole = await tx.role.findFirst({
+          where: { serverId, name: 'Member' },
+          orderBy: { position: 'asc' },
+          select: { id: true },
+        });
+        if (defaultRole) {
+          await tx.roleMember.create({ data: { roleId: defaultRole.id, memberId: member.id } });
+        }
+      });
+    } catch (error) {
+      if (error instanceof Error && error.message === 'INVITE_UNAVAILABLE') return res.status(410).json({ error: 'Invite is no longer available' });
+      throw error;
+    }
+    const joinedServer = await prisma.server.findUnique({ where: { id: serverId }, include: serverInclude });
+    if (!joinedServer) return res.status(404).json({ error: 'Server not found' });
+    const visibleChannels = await Promise.all(joinedServer.channels.map(async (channel) =>
+      (await canViewChannel(req.userId!, channel.id)) ? channel : null
+    ));
+    res.json({ ...joinedServer, channels: visibleChannels.filter(Boolean) });
   } catch (error) {
     if (zodError(error, res)) return;
     res.status(500).json({ error: 'Failed to join server' });
@@ -225,8 +282,12 @@ serverRouter.post('/:id/roles', authenticate, requireServerManager, async (req: 
     const { name, color, permissions } = z.object({
       name: z.string().trim().min(1).max(50),
       color: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
-      permissions: z.array(z.string().max(64)).optional(),
+      permissions: z.array(z.enum(PERMISSIONS)).optional(),
     }).parse(req.body);
+    if (permissions?.length) {
+      const allowed = await Promise.all(permissions.map((permission) => hasServerPermission(req.userId!, req.params.id, permission)));
+      if (allowed.some((value) => !value)) return res.status(403).json({ error: 'You cannot grant permissions you do not possess' });
+    }
 
     const role = await prisma.role.create({
       data: {
@@ -246,12 +307,25 @@ serverRouter.post('/:id/roles', authenticate, requireServerManager, async (req: 
 
 serverRouter.patch('/:id/roles/:roleId', authenticate, requireServerPermission('manage_roles'), async (req: AuthRequest, res: Response) => {
   try {
+    if (!(await canManageRole(req.userId!, req.params.roleId, req.params.id))) return res.status(403).json({ error: 'You cannot manage a role at or above your highest role' });
     const updates = z.object({
       name: z.string().trim().min(1).max(50).optional(),
       color: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
-      permissions: z.array(z.string().max(64)).optional(),
+      permissions: z.array(z.enum(PERMISSIONS)).optional(),
       position: z.number().int().min(0).max(1000).optional(),
-    }).parse(req.body);
+    }).strict().parse(req.body);
+    if (updates.position !== undefined) {
+      const actorRole = await prisma.role.findFirst({
+        where: { serverId: req.params.id, members: { some: { member: { is: { userId: req.userId! } } } } },
+        orderBy: { position: 'desc' }, select: { position: true },
+      });
+      const server = await prisma.server.findUnique({ where: { id: req.params.id }, select: { ownerId: true } });
+      if (server?.ownerId !== req.userId && (!actorRole || updates.position >= actorRole.position)) return res.status(403).json({ error: 'You cannot move a role to or above your highest role' });
+    }
+    if (updates.permissions) {
+      const allowed = await Promise.all(updates.permissions.map((permission) => hasServerPermission(req.userId!, req.params.id, permission)));
+      if (allowed.some((value) => !value)) return res.status(403).json({ error: 'You cannot grant permissions you do not possess' });
+    }
     const role = await prisma.role.update({
       where: { id: req.params.roleId, serverId: req.params.id },
       data: updates,
@@ -266,6 +340,7 @@ serverRouter.patch('/:id/roles/:roleId', authenticate, requireServerPermission('
 
 serverRouter.delete('/:id/roles/:roleId', authenticate, requireServerPermission('manage_roles'), async (req: AuthRequest, res: Response) => {
   try {
+    if (!(await canManageRole(req.userId!, req.params.roleId, req.params.id))) return res.status(403).json({ error: 'You cannot delete a role at or above your highest role' });
     await prisma.role.delete({ where: { id: req.params.roleId, serverId: req.params.id } });
     await logAudit(req.params.id, req.userId!, 'ROLE_DELETE', req.params.roleId);
     res.json({ success: true });
@@ -276,6 +351,10 @@ serverRouter.delete('/:id/roles/:roleId', authenticate, requireServerPermission(
 
 serverRouter.post('/:id/roles/:roleId/members/:userId', authenticate, requireServerPermission('manage_roles'), async (req: AuthRequest, res: Response) => {
   try {
+    if (!(await canManageRole(req.userId!, req.params.roleId, req.params.id))) return res.status(403).json({ error: 'You cannot assign a role at or above your highest role' });
+    if (!(await canManageMember(req.userId!, req.params.userId, req.params.id))) return res.status(403).json({ error: 'You cannot manage this member' });
+    const role = await prisma.role.findFirst({ where: { id: req.params.roleId, serverId: req.params.id }, select: { id: true } });
+    if (!role) return res.status(404).json({ error: 'Role not found in this server' });
     const member = await prisma.serverMember.findUnique({
       where: { userId_serverId: { userId: req.params.userId, serverId: req.params.id } },
       select: { id: true },
@@ -295,6 +374,10 @@ serverRouter.post('/:id/roles/:roleId/members/:userId', authenticate, requireSer
 
 serverRouter.delete('/:id/roles/:roleId/members/:userId', authenticate, requireServerPermission('manage_roles'), async (req: AuthRequest, res: Response) => {
   try {
+    if (!(await canManageRole(req.userId!, req.params.roleId, req.params.id))) return res.status(403).json({ error: 'You cannot remove a role at or above your highest role' });
+    if (!(await canManageMember(req.userId!, req.params.userId, req.params.id))) return res.status(403).json({ error: 'You cannot manage this member' });
+    const role = await prisma.role.findFirst({ where: { id: req.params.roleId, serverId: req.params.id }, select: { id: true } });
+    if (!role) return res.status(404).json({ error: 'Role not found in this server' });
     const member = await prisma.serverMember.findUnique({
       where: { userId_serverId: { userId: req.params.userId, serverId: req.params.id } },
       select: { id: true },
@@ -323,4 +406,45 @@ serverRouter.get('/:id/audit-log', authenticate, requireServerManager, async (re
   } catch (error) {
     res.status(500).json({ error: 'Failed to get audit log' });
   }
+});
+
+
+// Advanced, expiring, use-limited invite management.
+serverRouter.get('/:id/invites', authenticate, requireServerPermission('manage_invites'), async (req: AuthRequest, res: Response) => {
+  const invites = await prisma.serverInvite.findMany({
+    where: { serverId: req.params.id },
+    orderBy: { createdAt: 'desc' },
+  });
+  return res.json(invites);
+});
+
+serverRouter.post('/:id/invites', authenticate, requireServerPermission('manage_invites'), async (req: AuthRequest, res: Response) => {
+  try {
+    const input = z.object({
+      maxUses: z.number().int().min(1).max(100000).optional().nullable(),
+      expiresInSeconds: z.number().int().min(60).max(365 * 24 * 60 * 60).optional(),
+    }).strict().parse(req.body || {});
+    const server = await prisma.server.findUnique({ where: { id: req.params.id }, select: { id: true } });
+    if (!server) return res.status(404).json({ error: 'Server not found' });
+    const invite = await prisma.serverInvite.create({
+      data: {
+        serverId: server.id,
+        creatorId: req.userId!,
+        code: randomBytes(18).toString('base64url'),
+        maxUses: input.maxUses ?? null,
+        expiresAt: input.expiresInSeconds ? new Date(Date.now() + input.expiresInSeconds * 1000) : null,
+      },
+    });
+    await logAudit(server.id, req.userId!, 'INVITE_CREATE', invite.id, { maxUses: invite.maxUses, expiresAt: invite.expiresAt });
+    return res.status(201).json(invite);
+  } catch (error) {
+    if (zodError(error, res)) return;
+    return res.status(500).json({ error: 'Failed to create invite' });
+  }
+});
+
+serverRouter.delete('/:id/invites/:inviteId', authenticate, requireServerPermission('manage_invites'), async (req: AuthRequest, res: Response) => {
+  const result = await prisma.serverInvite.deleteMany({ where: { id: req.params.inviteId, serverId: req.params.id } });
+  if (result.count) await logAudit(req.params.id, req.userId!, 'INVITE_DELETE', req.params.inviteId);
+  return res.json({ success: result.count === 1 });
 });

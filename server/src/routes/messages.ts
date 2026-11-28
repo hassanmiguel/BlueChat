@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { prisma, authenticate, AuthRequest } from '../middleware/auth.js';
 import {
   hasServerPermission,
+  hasChannelPermission,
   requireMessageAccess,
   requireMessageAuthorOrManager,
 } from '../middleware/authz.js';
@@ -137,7 +138,7 @@ messageRouter.post('/:id/pin', authenticate, requireMessageAccess, async (req: A
       where: { id: message!.channelId },
       select: { serverId: true },
     });
-    if (!channel || !(await hasServerPermission(req.userId!, channel.serverId, 'manage_messages'))) {
+    if (!channel || !(await hasChannelPermission(req.userId!, message!.channelId, 'manage_messages'))) {
       return res.status(403).json({ error: 'Server owner or admin role required' });
     }
 

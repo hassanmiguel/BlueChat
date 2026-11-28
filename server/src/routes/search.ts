@@ -1,5 +1,6 @@
 import { Router, Response } from 'express';
 import { authenticate, AuthRequest, prisma } from '../middleware/auth.js';
+import { canViewChannel } from '../middleware/authz.js';
 
 export const searchRouter = Router();
 
@@ -18,10 +19,13 @@ searchRouter.get('/', authenticate, async (req: AuthRequest, res: Response) => {
       select: { serverId: true },
     });
     const serverIds = memberServers.map((membership) => membership.serverId);
-    const accessibleChannels = await prisma.channel.findMany({
+    const memberChannels = await prisma.channel.findMany({
       where: { serverId: { in: serverIds } },
       select: { id: true, name: true, type: true, serverId: true, server: { select: { name: true } } },
     });
+    const accessibleChannels = (await Promise.all(memberChannels.map(async (channel) =>
+      (await canViewChannel(req.userId!, channel.id)) ? channel : null
+    ))).filter((channel): channel is NonNullable<typeof channel> => Boolean(channel));
     const channelIds = accessibleChannels.map((channel) => channel.id);
 
     const serverId = String(req.query.serverId || '');

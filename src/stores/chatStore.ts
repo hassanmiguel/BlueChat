@@ -147,6 +147,23 @@ export const normalizeMessage = (raw: any, channelId?: string): Message => ({
   replyTo: raw.replyTo ? normalizeMessage(raw.replyTo) : undefined,
   isPinned: Boolean(raw.isPinned),
   mentions: [],
+  botApplication: raw.botApplication ? { id: raw.botApplication.id, name: raw.botApplication.name, avatar: mediaUrl(raw.botApplication.avatar) } : undefined,
+  webhookName: raw.webhookName || undefined,
+  poll: raw.poll ? {
+    id: raw.poll.id,
+    question: raw.poll.question,
+    multipleChoice: Boolean(raw.poll.multipleChoice),
+    anonymous: Boolean(raw.poll.anonymous),
+    closedAt: raw.poll.closedAt,
+    expiresAt: raw.poll.expiresAt,
+    options: (raw.poll.options || []).map((option: any) => ({
+      id: option.id,
+      label: option.label,
+      voteCount: option.votes?.length ?? option.voteCount ?? 0,
+      votedByMe: option.votedByMe ?? option.votes?.some((vote: any) => vote.userId === useAuthStore.getState().user?.id),
+      voters: option.voters ?? option.votes?.map((vote: any) => vote.userId),
+    })),
+  } : undefined,
 });
 
 const normalizeDm = (raw: any): DirectMessage => ({

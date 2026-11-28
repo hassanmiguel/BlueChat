@@ -3,11 +3,15 @@ import { z } from 'zod';
 import { prisma, authenticate, AuthRequest } from '../middleware/auth.js';
 import type { Server as SocketServer } from 'socket.io';
 import { notifyUser } from '../utils/notifications.js';
+import { getAutoModViolation } from '../utils/automod.js';
 import {
   isServerMember,
   requireChannelAccess,
   requireChannelManager,
   hasServerPermission,
+  hasChannelPermission,
+  canViewChannel,
+  PERMISSIONS,
 } from '../middleware/authz.js';
 
 export const channelRouter = Router();
@@ -34,7 +38,10 @@ channelRouter.get('/:serverId', authenticate, async (req: AuthRequest, res: Resp
       where: { serverId: req.params.serverId },
       orderBy: { position: 'asc' },
     });
-    res.json(channels);
+    const visible = await Promise.all(channels.map(async (channel) =>
+      (await canViewChannel(req.userId!, channel.id)) ? channel : null
+    ));
+    res.json(visible.filter(Boolean));
   } catch (error) {
     res.status(500).json({ error: 'Failed to get channels' });
   }
@@ -53,6 +60,10 @@ channelRouter.post('/', authenticate, async (req: AuthRequest, res: Response) =>
 
     if (!(await hasServerPermission(req.userId!, serverId, 'create_channels'))) {
       return res.status(403).json({ error: 'Create Channels permission required' });
+    }
+    if (categoryId) {
+      const category = await prisma.category.findFirst({ where: { id: categoryId, serverId }, select: { id: true } });
+      if (!category) return res.status(400).json({ error: 'Category must belong to the selected server' });
     }
 
     const channel = await prisma.channel.create({
@@ -123,6 +134,7 @@ channelRouter.get('/:id/messages', authenticate, requireChannelAccess, async (re
         reactions: { include: { user: { select: { id: true } } } },
         replyTo: { include: { author: { select: { id: true, username: true } } } },
         attachments: true,
+        poll: { include: { options: { include: { votes: { select: { userId: true } } } } } },
       },
     });
 
@@ -136,6 +148,15 @@ channelRouter.get('/:id/messages', authenticate, requireChannelAccess, async (re
           return acc;
         }, {}),
       ),
+      poll: msg.poll ? {
+        ...msg.poll,
+        options: msg.poll.options.map(({ votes, ...option }) => ({
+          ...option,
+          voteCount: votes.length,
+          votedByMe: votes.some((vote) => vote.userId === req.userId),
+          voters: msg.poll!.anonymous ? undefined : votes.map((vote) => vote.userId),
+        })),
+      } : null,
     }));
 
     res.json(transformed.reverse());
@@ -169,14 +190,22 @@ channelRouter.post('/:id/messages', authenticate, requireChannelAccess, async (r
     });
     if (!channel) return res.status(404).json({ error: 'Channel not found' });
     if (channel.server.autoModEnabled) {
-      const blocked = channel.server.blockedWords.find((word) => word && content.toLowerCase().includes(word.toLowerCase()));
-      if (blocked) return res.status(400).json({ error: 'Message contains a blocked word' });
+      const violation = await getAutoModViolation(channel.serverId, req.params.id, req.userId!, content, channel.server.blockedWords);
+      if (violation) return res.status(400).json({ error: violation });
     }
-    if (!(await hasServerPermission(req.userId!, channel.serverId, 'send_messages'))) {
+    if (!(await hasChannelPermission(req.userId!, req.params.id, 'send_messages'))) {
       return res.status(403).json({ error: 'You cannot send messages in this channel' });
     }
-    if (attachments?.length && !(await hasServerPermission(req.userId!, channel.serverId, 'attach_files'))) {
+    if (attachments?.length && !(await hasChannelPermission(req.userId!, req.params.id, 'attach_files'))) {
       return res.status(403).json({ error: 'You cannot attach files in this channel' });
+    }
+    const privateUploadIds = (attachments || []).map((file) => file.url.match(new RegExp('/api/upload/private/([A-Za-z0-9-]+)$'))?.[1]).filter((id): id is string => Boolean(id));
+    if (privateUploadIds.length) {
+      const ownedUploads = await prisma.privateUpload.findMany({
+        where: { id: { in: privateUploadIds }, ownerId: req.userId! },
+        select: { id: true },
+      });
+      if (ownedUploads.length !== new Set(privateUploadIds).size) return res.status(400).json({ error: 'One or more private attachments are invalid or not owned by you' });
     }
     if (channel.slowMode) {
       const recent = await prisma.message.findFirst({
@@ -247,6 +276,7 @@ channelRouter.post('/:id/messages', authenticate, requireChannelAccess, async (r
         select: { id: true, username: true },
       });
       for (const mentioned of mentionedUsers) {
+        if (!(await canViewChannel(mentioned.id, req.params.id))) continue;
         await notifyUser(io as SocketServer | undefined, {
           userId: mentioned.id,
           type: 'mention',
@@ -286,4 +316,49 @@ channelRouter.get('/:id/search', authenticate, requireChannelAccess, async (req:
   } catch (error) {
     res.status(500).json({ error: 'Failed to search' });
   }
+});
+
+
+// Channel-specific role overrides. Only permissions the actor already holds
+// may be granted or denied to another role.
+channelRouter.get('/:id/permissions', authenticate, requireChannelManager, async (req: AuthRequest, res: Response) => {
+  const overrides = await prisma.channelPermissionOverride.findMany({
+    where: { channelId: req.params.id },
+    include: { role: { select: { id: true, name: true, position: true } } },
+  });
+  return res.json(overrides);
+});
+
+channelRouter.put('/:id/permissions/:roleId', authenticate, requireChannelManager, async (req: AuthRequest, res: Response) => {
+  try {
+    const input = z.object({
+      allow: z.array(z.enum(PERMISSIONS)).max(PERMISSIONS.length),
+      deny: z.array(z.enum(PERMISSIONS)).max(PERMISSIONS.length),
+    }).strict().parse(req.body);
+    const overlap = input.allow.filter((permission) => input.deny.includes(permission));
+    if (overlap.length) return res.status(400).json({ error: 'A permission cannot be both allowed and denied' });
+    const channel = await prisma.channel.findUnique({ where: { id: req.params.id }, select: { serverId: true } });
+    if (!channel) return res.status(404).json({ error: 'Channel not found' });
+    const role = await prisma.role.findFirst({ where: { id: req.params.roleId, serverId: channel.serverId } });
+    if (!role) return res.status(404).json({ error: 'Role not found in this server' });
+    const requested = [...input.allow, ...input.deny];
+    const held = await Promise.all(requested.map((permission) => hasServerPermission(req.userId!, channel.serverId, permission)));
+    if (held.some((allowed) => !allowed)) return res.status(403).json({ error: 'You cannot configure permissions you do not possess' });
+    const override = await prisma.channelPermissionOverride.upsert({
+      where: { channelId_roleId: { channelId: req.params.id, roleId: req.params.roleId } },
+      update: input,
+      create: { channelId: req.params.id, roleId: req.params.roleId, ...input },
+    });
+    return res.json(override);
+  } catch (error) {
+    if (zodError(error, res)) return;
+    return res.status(500).json({ error: 'Failed to update channel permissions' });
+  }
+});
+
+channelRouter.delete('/:id/permissions/:roleId', authenticate, requireChannelManager, async (req: AuthRequest, res: Response) => {
+  const result = await prisma.channelPermissionOverride.deleteMany({
+    where: { channelId: req.params.id, roleId: req.params.roleId },
+  });
+  return res.json({ success: result.count === 1 });
 });

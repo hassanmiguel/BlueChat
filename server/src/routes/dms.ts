@@ -386,6 +386,103 @@ dmRouter.post('/:id/messages', authenticate, requireParticipant, async (req: Aut
       })).max(10).optional(),
     }).parse(req.body);
 
+    const privateUploadIds = (attachments || []).map((file) => file.url.match(new RegExp('/api/upload/private/([A-Za-z0-9-]+)
+      const reply = await prisma.directMessageMessage.findUnique({
+        where: { id: replyToId },
+        select: { dmId: true },
+      });
+      if (!reply || reply.dmId !== req.params.id) {
+        return res.status(400).json({ error: 'Reply must be in the same conversation' });
+      }
+    }
+
+    const message = await prisma.directMessageMessage.create({
+      data: {
+        content,
+        dmId: req.params.id,
+        authorId: req.userId!,
+        replyToId,
+        attachments: {
+          create: (attachments || []).map((file) => ({
+            url: file.url,
+            filename: file.filename,
+            mimeType: file.mimeType,
+            size: file.size,
+          })),
+        },
+      },
+      include: messageInclude,
+    });
+    await prisma.directMessage.update({
+      where: { id: req.params.id },
+      data: { updatedAt: new Date() },
+    });
+
+    const payload = serializeMessage(message);
+    emitToDm(req, 'dm:message:new', req.params.id, { dmId: req.params.id, message: payload });
+
+    const io = req.app.get('io') as SocketServer | undefined;
+    const participants = await prisma.directMessageParticipant.findMany({
+      where: { dmId: req.params.id, userId: { not: req.userId } },
+      select: { userId: true },
+    });
+    for (const participant of participants) {
+      await notifyUser(io, {
+        userId: participant.userId,
+        type: 'direct_message',
+        title: message.author.username,
+        body: content.slice(0, 160),
+        link: `/?dm=${req.params.id}`,
+        metadata: { actorId: req.userId },
+      });
+    }
+
+    res.status(201).json(payload);
+  } catch (error) {
+    if (zodError(error, res)) return;
+    res.status(500).json({ error: 'Failed to send DM' });
+  }
+});
+
+dmRouter.get('/:id/search', authenticate, requireParticipant, async (req: AuthRequest, res: Response) => {
+  try {
+    const query = String(req.query.q || '').trim();
+    if (!query) return res.json([]);
+    const messages = await prisma.directMessageMessage.findMany({
+      where: {
+        dmId: req.params.id,
+        content: { contains: query, mode: 'insensitive' },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 50,
+      include: messageInclude,
+    });
+    res.json(messages.reverse().map(serializeMessage));
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to search conversation' });
+  }
+});
+
+dmRouter.post('/:id/read', authenticate, requireParticipant, async (req: AuthRequest, res: Response) => {
+  try {
+    await prisma.directMessageParticipant.update({
+      where: { dmId_userId: { dmId: req.params.id, userId: req.userId! } },
+      data: { lastReadAt: new Date() },
+    });
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to update read state' });
+  }
+});
+))?.[1]).filter((id): id is string => Boolean(id));
+    if (privateUploadIds.length) {
+      const ownedUploads = await prisma.privateUpload.findMany({
+        where: { id: { in: privateUploadIds }, ownerId: req.userId! },
+        select: { id: true },
+      });
+      if (ownedUploads.length !== new Set(privateUploadIds).size) return res.status(400).json({ error: 'One or more private attachments are invalid or not owned by you' });
+    }
+
     if (replyToId) {
       const reply = await prisma.directMessageMessage.findUnique({
         where: { id: replyToId },

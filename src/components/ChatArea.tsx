@@ -2,7 +2,7 @@ import { Fragment, useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useChatStore } from '../stores/chatStore';
 import { useAuthStore } from '../stores/authStore';
-import { Hash, Megaphone, BookOpen, Volume2, Pin, Users, Search, Smile, Send, MessageSquare, UserPlus, Ban, Trash2 } from 'lucide-react';
+import { Hash, Megaphone, BookOpen, Volume2, Pin, Users, Search, Smile, Send, MessageSquare, UserPlus, Ban, Trash2, BarChart3, Clock3 } from 'lucide-react';
 import { useUIStore } from '../stores/uiStore';
 import { socketService } from '../services/socket';
 import { api } from '../services/api';
@@ -14,6 +14,7 @@ import TypingIndicator from './TypingIndicator';
 import Avatar from './Avatar';
 import ContextMenu, { useContextMenu } from './ContextMenu';
 import NotificationBell from './NotificationBell';
+import ForumChannelView from './ForumChannelView';
 
 
 export default function ChatArea() {
@@ -42,6 +43,12 @@ export default function ChatArea() {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [currentMessages.length]);
+
+  useEffect(() => {
+    if (view !== 'server' || !activeChannelId || !currentMessages.length) return;
+    const latest = currentMessages[currentMessages.length - 1];
+    void api.updateChannelReadState(activeChannelId, latest.id);
+  }, [view, activeChannelId, currentMessages.length]);
 
   const notifyTyping = (value: string) => {
     const target = activeChannelId || activeDmId;
@@ -282,6 +289,10 @@ export default function ChatArea() {
   // At this point channel is defined
   const activeChannel = channel;
 
+  if (activeChannel.type === 'forum') {
+    return <ForumChannelView channelId={activeChannel.id} channelName={activeChannel.name} topic={activeChannel.topic} />;
+  }
+
   const getChannelHeaderIcon = () => {
     switch (activeChannel.type) {
       case 'text': return <Hash className="w-6 h-6 text-dc-text-muted" />;
@@ -429,10 +440,56 @@ export default function ChatArea() {
         replyingTo={replyingTo}
         setReplyingTo={setReplyingTo}
         channelName={activeChannel.name}
+        channelId={activeChannel.id}
         pendingFiles={pendingFiles}
         onFiles={setPendingFiles}
         uploading={uploading}
       />
+    </div>
+  );
+}
+
+function PollCard({ poll, channelId }: { poll: NonNullable<Message['poll']>; channelId: string }) {
+  const [current, setCurrent] = useState(poll);
+  const [busy, setBusy] = useState(false);
+  const [selected, setSelected] = useState<string[]>([]);
+  useEffect(() => setCurrent(poll), [poll]);
+  const closed = Boolean(current.closedAt) || Boolean(current.expiresAt && new Date(current.expiresAt) <= new Date());
+  const total = current.options.reduce((sum, option) => sum + (option.voteCount || 0), 0);
+  const vote = async (optionIds: string[]) => {
+    if (busy || closed) return;
+    setBusy(true);
+    const response = await api.votePoll(current.id, optionIds);
+    if (response.success) {
+      const refreshed = await api.getChannelPolls(channelId);
+      const latest = refreshed.data?.find((item: any) => item.id === current.id);
+      if (latest) setCurrent({
+        ...latest,
+        options: latest.options.map((option: any) => ({
+          id: option.id, label: option.label, voteCount: option.voteCount,
+          votedByMe: option.votedByMe, voters: option.voters,
+        })),
+      });
+    }
+    setBusy(false);
+  };
+  return (
+    <div className="mt-3 max-w-lg rounded-xl border border-dc-divider bg-dc-sidebar/70 p-4">
+      <div className="flex items-center justify-between gap-2"><p className="font-semibold text-sm">{current.question}</p><span className="text-[10px] uppercase tracking-wide text-dc-text-muted">{closed ? 'Closed' : current.multipleChoice ? 'Multiple choice' : 'Poll'}</span></div>
+      <div className="mt-3 space-y-2">
+        {current.options.map((option) => {
+          const count = option.voteCount || 0;
+          const percent = total ? Math.round(count / total * 100) : 0;
+          return (
+            <button key={option.id} disabled={busy || closed} onClick={() => current.multipleChoice ? setSelected((old) => old.includes(option.id) ? old.filter((id) => id !== option.id) : [...old, option.id]) : void vote([option.id])} className={`relative w-full overflow-hidden rounded-lg border px-3 py-2 text-left text-sm disabled:cursor-default ${selected.includes(option.id) ? 'border-dc-brand' : 'border-dc-divider'} bg-dc-channel`}>
+              <span className="absolute inset-y-0 left-0 bg-dc-brand/20" style={{ width: `${percent}%` }} />
+              <span className="relative flex justify-between gap-3"><span>{option.label}{option.votedByMe ? ' ✓' : ''}</span><span className="text-xs text-dc-text-muted">{count} · {percent}%</span></span>
+            </button>
+          );
+        })}
+      </div>
+      {current.multipleChoice && !closed && <button disabled={busy || selected.length === 0} onClick={() => void vote(selected)} className="mt-3 rounded-lg bg-dc-brand px-3 py-2 text-xs font-semibold text-white disabled:opacity-50">Submit vote</button>}
+      <p className="mt-2 text-[11px] text-dc-text-muted">{total} vote{total === 1 ? '' : 's'}{current.anonymous ? ' · Anonymous poll' : ''}</p>
     </div>
   );
 }
@@ -459,7 +516,7 @@ interface MessageRowProps {
 }
 
 function MessageRow({ message, isCurrentUser, showAvatar, onReply, onEdit, onDelete, onPin, onReaction, showEmojiPicker, toggleEmojiPicker, quickEmojis, formatTime, editingId, editContent, setEditContent, handleEdit, setEditingId }: MessageRowProps) {
-  const { openProfile } = useUIStore();
+  const { openProfile, addNotification } = useUIStore();
   const markUnread = useChatStore((s) => s.markUnread);
   const { contextMenu, handleContextMenu, closeContextMenu } = useContextMenu();
   const statusColors: Record<string, string> = {
@@ -514,8 +571,9 @@ function MessageRow({ message, isCurrentUser, showAvatar, onReply, onEdit, onDel
                 onClick={() => openProfile(message.author.id)}
                 className="font-medium text-white hover:underline cursor-pointer"
               >
-                {message.author.username}
+                {message.botApplication?.name || message.webhookName || message.author.username}
               </span>
+              {(message.botApplication || message.webhookName) && <span className="rounded bg-dc-brand px-1 py-0.5 text-[9px] font-bold text-white">{message.botApplication ? 'BOT' : 'WEBHOOK'}</span>}
               <span className="text-xs text-dc-text-muted">
                 {formatTime(message.timestamp)}
               </span>
@@ -543,6 +601,8 @@ function MessageRow({ message, isCurrentUser, showAvatar, onReply, onEdit, onDel
               {message.editedAt && <span className="text-xs text-dc-text-muted ml-1">(edited)</span>}
             </div>
           )}
+
+          {message.poll && <PollCard poll={message.poll} channelId={message.channelId} />}
 
           {message.attachments.length > 0 && (
             <div className="flex flex-wrap gap-2 mt-2">
@@ -651,6 +711,7 @@ function MessageRow({ message, isCurrentUser, showAvatar, onReply, onEdit, onDel
           onAddReaction={toggleEmojiPicker}
           onCopyText={() => { void navigator.clipboard?.writeText(message.content); }}
           onPin={onPin}
+          onSave={() => { void api.saveMessage(message.id).then((response) => addNotification(response.success ? 'Message saved' : 'Could not save message', response.success ? 'Added to your saved messages.' : response.error || 'Please try again.', response.success ? 'success' : 'error')); }}
           onCopyLink={() => { void navigator.clipboard?.writeText(`${window.location.origin}/?message=${message.id}`); }}
           onMarkUnread={() => markUnread(message.channelId, message.id)}
           onEdit={isCurrentUser ? onEdit : undefined}
@@ -674,13 +735,59 @@ interface MessageInputProps {
   pendingFiles: File[];
   onFiles: (files: File[]) => void;
   uploading: boolean;
+  channelId?: string;
 }
 
-function MessageInput({ messageInput, setMessageInput, handleKeyDown, handleSend, replyingTo, setReplyingTo, channelName, pendingFiles, onFiles, uploading }: MessageInputProps) {
+function MessageInput({ messageInput, setMessageInput, handleKeyDown, handleSend, replyingTo, setReplyingTo, channelName, pendingFiles, onFiles, uploading, channelId }: MessageInputProps) {
   const [showComposerEmoji, setShowComposerEmoji] = useState(false);
+  const [showPollCreator, setShowPollCreator] = useState(false);
+  const [pollQuestion, setPollQuestion] = useState('');
+  const [pollOptions, setPollOptions] = useState(['', '']);
+  const [pollMultiple, setPollMultiple] = useState(false);
+  const [showScheduleCreator, setShowScheduleCreator] = useState(false);
+  const [scheduledContent, setScheduledContent] = useState('');
+  const [scheduledAt, setScheduledAt] = useState('');
+  const [featureBusy, setFeatureBusy] = useState(false);
+  const [featureError, setFeatureError] = useState('');
 
   return (
     <div className="px-4 pb-6 pt-2 shrink-0">
+      {channelId && (showPollCreator || showScheduleCreator) && (
+        <div className="mb-3 rounded-xl border border-dc-divider bg-dc-sidebar p-4 space-y-3">
+          {featureError && <p className="text-xs text-red-300">{featureError}</p>}
+          {showPollCreator && (
+            <>
+              <div className="flex items-center justify-between"><h4 className="text-sm font-semibold">Create a poll</h4><button onClick={() => setShowPollCreator(false)} className="text-xs text-dc-text-muted">Close</button></div>
+              <input value={pollQuestion} onChange={(e) => setPollQuestion(e.target.value)} placeholder="Ask a question…" className="w-full rounded-lg bg-dc-input p-2 text-sm" />
+              {pollOptions.map((option, index) => <input key={index} value={option} onChange={(e) => setPollOptions((old) => old.map((value, i) => i === index ? e.target.value : value))} placeholder={`Option ${index + 1}`} className="w-full rounded-lg bg-dc-input p-2 text-sm" />)}
+              <div className="flex flex-wrap items-center gap-2"><button onClick={() => setPollOptions((old) => old.length < 10 ? [...old, ''] : old)} disabled={pollOptions.length >= 10} className="text-xs text-dc-text-link">Add option</button><label className="ml-auto flex items-center gap-2 text-xs text-dc-text-muted"><input type="checkbox" checked={pollMultiple} onChange={(e) => setPollMultiple(e.target.checked)} /> Allow multiple answers</label></div>
+              <button disabled={featureBusy || !pollQuestion.trim() || pollOptions.filter((v) => v.trim()).length < 2} onClick={async () => {
+                setFeatureBusy(true); setFeatureError('');
+                const sent = await api.sendMessage(channelId, pollQuestion.trim());
+                if (!sent.success || !sent.data?.id) { setFeatureError(sent.error || 'Could not create poll message.'); setFeatureBusy(false); return; }
+                const created = await api.createPoll(channelId, { messageId: sent.data.id, question: pollQuestion.trim(), options: pollOptions.map((v) => v.trim()).filter(Boolean), multipleChoice: pollMultiple });
+                setFeatureBusy(false);
+                if (!created.success) { setFeatureError(created.error || 'Message sent, but poll creation failed.'); return; }
+                setPollQuestion(''); setPollOptions(['', '']); setPollMultiple(false); setShowPollCreator(false);
+              }} className="rounded-lg bg-dc-brand px-3 py-2 text-xs font-semibold text-white disabled:opacity-50">{featureBusy ? 'Creating…' : 'Create poll'}</button>
+            </>
+          )}
+          {showScheduleCreator && (
+            <>
+              <div className="flex items-center justify-between"><h4 className="text-sm font-semibold">Schedule a message</h4><button onClick={() => setShowScheduleCreator(false)} className="text-xs text-dc-text-muted">Close</button></div>
+              <textarea value={scheduledContent} onChange={(e) => setScheduledContent(e.target.value)} placeholder="Message content…" className="w-full rounded-lg bg-dc-input p-2 text-sm min-h-20" />
+              <input type="datetime-local" value={scheduledAt} onChange={(e) => setScheduledAt(e.target.value)} className="rounded-lg bg-dc-input p-2 text-sm" />
+              <button disabled={featureBusy || !scheduledContent.trim() || !scheduledAt} onClick={async () => {
+                setFeatureBusy(true); setFeatureError('');
+                const response = await api.scheduleMessage(channelId, scheduledContent.trim(), new Date(scheduledAt).toISOString());
+                setFeatureBusy(false);
+                if (!response.success) { setFeatureError(response.error || 'Could not schedule message.'); return; }
+                setScheduledContent(''); setScheduledAt(''); setShowScheduleCreator(false);
+              }} className="rounded-lg bg-dc-brand px-3 py-2 text-xs font-semibold text-white disabled:opacity-50">{featureBusy ? 'Scheduling…' : 'Schedule message'}</button>
+            </>
+          )}
+        </div>
+      )}
       {/* Reply indicator */}
       <AnimatePresence>
         {replyingTo && (
@@ -731,6 +838,8 @@ function MessageInput({ messageInput, setMessageInput, handleKeyDown, handleSend
           className="flex-1 bg-transparent py-3 px-2 text-dc-text placeholder-dc-text-muted/50 text-sm border-none"
         />
         <div className="flex items-center gap-1 shrink-0">
+          {channelId && <button type="button" title="Create poll" onClick={() => { setShowPollCreator((v) => !v); setShowScheduleCreator(false); setFeatureError(''); }} className="p-2 text-dc-text-muted hover:text-dc-text"><BarChart3 className="w-4 h-4" /></button>}
+          {channelId && <button type="button" title="Schedule message" onClick={() => { setShowScheduleCreator((v) => !v); setShowPollCreator(false); setFeatureError(''); }} className="p-2 text-dc-text-muted hover:text-dc-text"><Clock3 className="w-4 h-4" /></button>}
           <button disabled title="Gifts are not available yet" className="p-2 text-dc-text-muted cursor-not-allowed">
             <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor"><path d="M20 6h-2.18A3 3 0 0 0 12 2.35 3 3 0 0 0 6.18 6H4a2 2 0 0 0-2 2v2h9V6h2v4h9V8a2 2 0 0 0-2-2ZM12 4a1 1 0 1 1 0 2H8a1 1 0 0 1 1-1 1 1 0 0 0 1-1 1 1 0 0 0-1-1h3Zm-8 8v8a2 2 0 0 0 2 2h5v-10H4Zm9 10h5a2 2 0 0 0 2-2v-8h-7v10Z"/></svg>
           </button>

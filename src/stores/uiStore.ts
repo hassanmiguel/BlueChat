@@ -13,6 +13,7 @@ interface UIState {
   showAddFriend: boolean;
   showCalls: boolean;
   showNotifications: boolean;
+  showCommunityHub: boolean;
 
   // Voice
   isInVoice: boolean;
@@ -55,6 +56,7 @@ interface UIState {
   setShowAddFriend: (value: boolean) => void;
   setShowCalls: (value: boolean) => void;
   setShowNotifications: (value: boolean) => void;
+  setShowCommunityHub: (value: boolean) => void;
   openProfile: (userId: string) => void;
   closeProfile: () => void;
   
@@ -92,6 +94,7 @@ export const useUIStore = create<UIState>((set, get) => ({
   showAddFriend: false,
   showCalls: false,
   showNotifications: false,
+  showCommunityHub: false,
 
   isInVoice: false,
   voiceChannelId: null,
@@ -126,6 +129,7 @@ export const useUIStore = create<UIState>((set, get) => ({
   setShowAddFriend: (value) => set({ showAddFriend: value }),
   setShowCalls: (value) => set({ showCalls: value }),
   setShowNotifications: (value) => set({ showNotifications: value }),
+  setShowCommunityHub: (value) => set({ showCommunityHub: value }),
 
   openProfile: (userId) => set({ profileUserId: userId, showProfilePopup: true }),
   closeProfile: () => set({ profileUserId: null, showProfilePopup: false }),

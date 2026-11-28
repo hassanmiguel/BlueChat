@@ -75,6 +75,17 @@ export interface Message {
   replyTo?: Message;
   isPinned: boolean;
   mentions: string[];
+  botApplication?: { id: string; name: string; avatar?: string | null };
+  webhookName?: string | null;
+  poll?: {
+    id: string;
+    question: string;
+    multipleChoice: boolean;
+    anonymous: boolean;
+    closedAt?: string | null;
+    expiresAt?: string | null;
+    options: { id: string; label: string; voteCount?: number; votedByMe?: boolean; voters?: string[] }[];
+  };
 }
 
 export interface Attachment {

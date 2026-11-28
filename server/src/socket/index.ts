@@ -2,7 +2,7 @@ import { Server as SocketServer, Socket } from 'socket.io';
 import jwt from 'jsonwebtoken';
 import { config } from '../config.js';
 import { prisma } from '../middleware/auth.js';
-import { canViewChannel, hasServerPermission, isServerMember } from '../middleware/authz.js';
+import { canViewChannel, hasChannelPermission, hasCompletedOnboarding, hasServerPermission, isServerMember } from '../middleware/authz.js';
 
 interface AuthenticatedSocket extends Socket {
   userId?: string;
@@ -250,7 +250,7 @@ export function setupSocketHandlers(io: SocketServer) {
     }));
 
     socket.on('server:join', safe(async (serverId: string) => {
-      if (typeof serverId === 'string' && (await isServerMember(userId, serverId))) {
+      if (typeof serverId === 'string' && (await isServerMember(userId, serverId)) && (await hasCompletedOnboarding(userId, serverId))) {
         socket.join(`server:${serverId}`);
       }
     }));
@@ -310,9 +310,9 @@ export function setupSocketHandlers(io: SocketServer) {
       if (typeof channelId !== 'string') return;
       const channel = await prisma.channel.findUnique({
         where: { id: channelId },
-        select: { serverId: true },
+        select: { serverId: true, type: true },
       });
-      if (!channel || !(await hasServerPermission(userId, channel.serverId, 'connect'))) return;
+      if (!channel || !['VOICE', 'STAGE'].includes(channel.type) || !(await canViewChannel(userId, channelId)) || !(await hasChannelPermission(userId, channelId, 'connect'))) return;
 
       socket.join(`voice:${channelId}`);
       socket.to(`voice:${channelId}`).emit('voice:user-joined', {

@@ -18,6 +18,11 @@ import { uploadRouter } from './routes/upload.js';
 import { moderationRouter } from './routes/moderation.js';
 import { notificationRouter } from './routes/notifications.js';
 import { searchRouter } from './routes/search.js';
+import { featureRouter } from './routes/features.js';
+import { dispatchScheduledMessages } from './workers/scheduledMessages.js';
+import { voiceRouter } from './routes/voice.js';
+import { webhookRouter } from './routes/webhooks.js';
+import { botRouter } from './routes/bots.js';
 import { verifyCsrf } from './middleware/auth.js';
 import { setupSocketHandlers } from './socket/index.js';
 
@@ -75,6 +80,9 @@ app.use('/api/auth/register', authLimiter);
 app.use('/api/auth/password', authLimiter);
 app.use('/api/auth/oauth', authLimiter);
 
+app.use('/api/webhooks', webhookRouter);
+app.use('/api/bots', botRouter);
+
 app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
@@ -98,8 +106,17 @@ app.use('/api/upload', uploadRouter);
 app.use('/api/notifications', notificationRouter);
 app.use('/api/moderation', moderationRouter);
 app.use('/api/search', searchRouter);
+app.use('/api/features', featureRouter);
+app.use('/api/voice', voiceRouter);
 
 setupSocketHandlers(io);
+
+// Scheduled-message dispatcher. The database lease prevents overlapping
+// dispatch attempts across instances under normal operation.
+const scheduledDispatchTimer = setInterval(() => {
+  void dispatchScheduledMessages(io).catch((error) => console.error('Scheduled message worker error:', error));
+}, 10_000);
+scheduledDispatchTimer.unref?.();
 app.set('io', io);
 
 app.use((_req, res) => {

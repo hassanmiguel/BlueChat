@@ -1,18 +1,31 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useUIStore } from '../stores/uiStore';
 import { useChatStore } from '../stores/chatStore';
 import { X, Copy, Check, UserPlus } from 'lucide-react';
+import { api } from '../services/api';
 
 export default function InviteModal() {
   const { showInviteModal, toggleInviteModal } = useUIStore();
   const { servers, activeServerId, friends: allFriends } = useChatStore();
   const [copied, setCopied] = useState(false);
   const [invitedFriends, setInvitedFriends] = useState<string[]>([]);
+  const [inviteLink, setInviteLink] = useState('');
+  const [creatingInvite, setCreatingInvite] = useState(false);
 
   const activeServer = servers.find(s => s.id === activeServerId);
-  const inviteCode = activeServer?.inviteCode;
-  const inviteLink = inviteCode ? `${window.location.origin}/invite/${inviteCode}` : '';
+  useEffect(() => {
+    if (!showInviteModal || !activeServerId) return;
+    let cancelled = false;
+    setCreatingInvite(true);
+    void api.createServerInvite(activeServerId, { expiresInSeconds: 24 * 60 * 60 }).then((response) => {
+      if (cancelled) return;
+      const code = response.success ? response.data?.code : activeServer?.inviteCode;
+      setInviteLink(code ? `${window.location.origin}/invite/${code}` : '');
+      setCreatingInvite(false);
+    });
+    return () => { cancelled = true; };
+  }, [showInviteModal, activeServerId, activeServer?.inviteCode]);
   const friends = allFriends.filter(f => f.status === 'accepted');
 
   const handleCopy = () => {
@@ -67,7 +80,7 @@ export default function InviteModal() {
               <label className="text-xs font-bold text-dc-text-muted uppercase block mb-2">
                 Or, send them a server invite
               </label>
-              {inviteLink ? (
+              {creatingInvite ? <p className="text-sm text-dc-text-muted">Generating a 24-hour invite…</p> : inviteLink ? (
                 <div className="flex gap-2">
                   <input
                     type="text"

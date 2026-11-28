@@ -58,6 +58,37 @@ export const hasServerPermission = async (userId: string, serverId: string, perm
  * The server owner and roles carrying the administrator wildcard bypass
  * channel overrides.
  */
+/**
+ * Membership grants channel visibility by default for backward compatibility.
+ * A matching role override can explicitly hide a channel with deny:view_channel.
+ */
+export const canViewChannel = async (userId: string, channelId: string): Promise<boolean> => {
+  const channel = await prisma.channel.findUnique({
+    where: { id: channelId },
+    select: {
+      server: {
+        select: {
+          ownerId: true,
+          members: {
+            where: { userId },
+            select: { roles: { select: { roleId: true } } },
+          },
+        },
+      },
+      permissionOverrides: { select: { roleId: true, deny: true } },
+    },
+  });
+  if (!channel) return false;
+  if (channel.server.ownerId === userId) return true;
+
+  const member = channel.server.members[0];
+  if (!member) return false;
+  const roleIds = new Set(member.roles.map((assignment) => assignment.roleId));
+  return !channel.permissionOverrides.some(
+    (override) => roleIds.has(override.roleId) && override.deny.includes('view_channel'),
+  );
+};
+
 export const hasChannelPermission = async (
   userId: string,
   channelId: string,
@@ -191,8 +222,8 @@ export const requireChannelAccess = async (req: AuthRequest, res: Response, next
     select: { serverId: true },
   });
   if (!channel) return res.status(404).json({ error: 'Channel not found' });
-  if (!(await isServerMember(req.userId!, channel.serverId))) {
-    return res.status(403).json({ error: 'Not a member of this server' });
+  if (!(await canViewChannel(req.userId!, req.params.id))) {
+    return res.status(403).json({ error: 'You do not have access to this channel' });
   }
   if (await hasTimeout(req.userId!, channel.serverId)) {
     return res.status(403).json({ error: 'You are timed out in this server' });
@@ -241,8 +272,8 @@ export const requireMessageAccess = async (req: AuthRequest, res: Response, next
     where: { id: message.channelId },
     select: { serverId: true },
   });
-  if (!channel || !(await isServerMember(req.userId!, channel.serverId))) {
-    return res.status(403).json({ error: 'Not a member of this server' });
+  if (!channel || !(await canViewChannel(req.userId!, channel.id))) {
+    return res.status(403).json({ error: 'You do not have access to this channel' });
   }
   next();
 };

@@ -195,7 +195,12 @@ serverRouter.post('/join', authenticate, async (req: AuthRequest, res: Response)
     const existingMember = await prisma.serverMember.findUnique({
       where: { userId_serverId: { userId: req.userId!, serverId } },
     });
-    if (existingMember) return res.json(server);
+    if (existingMember) {
+      const visibleChannels = await Promise.all(server.channels.map(async (channel) =>
+        (await canViewChannel(req.userId!, channel.id)) ? channel : null
+      ));
+      return res.json({ ...server, channels: visibleChannels.filter(Boolean) });
+    }
 
     try {
       await prisma.$transaction(async (tx) => {
@@ -226,7 +231,12 @@ serverRouter.post('/join', authenticate, async (req: AuthRequest, res: Response)
       if (error instanceof Error && error.message === 'INVITE_UNAVAILABLE') return res.status(410).json({ error: 'Invite is no longer available' });
       throw error;
     }
-    res.json(server);
+    const joinedServer = await prisma.server.findUnique({ where: { id: serverId }, include: serverInclude });
+    if (!joinedServer) return res.status(404).json({ error: 'Server not found' });
+    const visibleChannels = await Promise.all(joinedServer.channels.map(async (channel) =>
+      (await canViewChannel(req.userId!, channel.id)) ? channel : null
+    ));
+    res.json({ ...joinedServer, channels: visibleChannels.filter(Boolean) });
   } catch (error) {
     if (zodError(error, res)) return;
     res.status(500).json({ error: 'Failed to join server' });

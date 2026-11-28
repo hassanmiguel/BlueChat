@@ -2,11 +2,11 @@ import { motion } from 'framer-motion';
 import { useChatStore } from '../stores/chatStore';
 import { useAuthStore } from '../stores/authStore';
 import { useUIStore } from '../stores/uiStore';
-import { Plus, Compass, MessageCircle, PhoneCall } from 'lucide-react';
+import { Plus, Compass, MessageCircle, PhoneCall, CalendarDays } from 'lucide-react';
 
 export default function ServerSidebar() {
   const { servers, activeServerId, setActiveServer, setView, view } = useChatStore();
-  const { toggleCreateServer, toggleDiscovery, showCalls, setShowCalls } = useUIStore();
+  const { toggleCreateServer, toggleDiscovery, showCalls, setShowCalls, setShowCommunityHub } = useUIStore();
   const user = useAuthStore(s => s.user);
 
   const getInitials = (name: string) => {
@@ -57,6 +57,22 @@ export default function ServerSidebar() {
         <div className="absolute left-16 top-1/2 -translate-y-1/2 bg-dc-popout text-white text-sm font-medium px-3 py-2 rounded-lg whitespace-nowrap opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50 shadow-xl pointer-events-none">
           Calls
           <div className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-1 w-2 h-2 bg-dc-popout rotate-45"></div>
+        </div>
+      </div>
+
+      {/* Community Hub */}
+      <div className="server-icon-wrapper relative group">
+        <motion.button
+          whileHover={{ scale: 1.05 }}
+          whileTap={{ scale: 0.95 }}
+          onClick={() => setShowCommunityHub(true)}
+          className="server-icon w-12 h-12 rounded-[50%] bg-dc-sidebar flex items-center justify-center text-dc-text-muted hover:bg-dc-brand hover:text-white hover:rounded-[35%] transition-all"
+          aria-label="Open Community Hub"
+        >
+          <CalendarDays className="w-5 h-5" />
+        </motion.button>
+        <div className="absolute left-16 top-1/2 -translate-y-1/2 bg-dc-popout text-white text-sm font-medium px-3 py-2 rounded-lg whitespace-nowrap opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50 shadow-xl pointer-events-none">
+          Community Hub
         </div>
       </div>
 

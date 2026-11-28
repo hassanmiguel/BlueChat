@@ -129,6 +129,7 @@ channelRouter.get('/:id/messages', authenticate, requireChannelAccess, async (re
         reactions: { include: { user: { select: { id: true } } } },
         replyTo: { include: { author: { select: { id: true, username: true } } } },
         attachments: true,
+        poll: { include: { options: { include: { votes: { select: { userId: true } } } } } },
       },
     });
 

@@ -1,6 +1,6 @@
 import type { Server as SocketServer } from 'socket.io';
 import { prisma } from '../middleware/auth.js';
-import { hasServerPermission, isServerMember } from '../middleware/authz.js';
+import { hasChannelPermission, isServerMember } from '../middleware/authz.js';
 
 /**
  * Dispatch due messages with a short database lease so multiple server
@@ -39,7 +39,7 @@ export const dispatchScheduledMessages = async (io: SocketServer): Promise<void>
         select: { id: true, serverId: true, server: { select: { autoModEnabled: true, blockedWords: true } } },
       });
       if (!channel || !(await isServerMember(item.authorId, channel.serverId)) ||
-          !(await hasServerPermission(item.authorId, channel.serverId, 'send_messages'))) {
+          !(await hasChannelPermission(item.authorId, channel.id, 'send_messages'))) {
         await prisma.scheduledMessage.update({
           where: { id: item.id },
           data: { cancelledAt: new Date(), processingAt: null },

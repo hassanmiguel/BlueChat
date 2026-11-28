@@ -99,7 +99,7 @@ export default function CommunityHubPage() {
 
   const issueToken = async (applicationId: string) => {
     setBusy(true);
-    const response = await api.createBotToken(applicationId, ['read_messages', 'send_messages']);
+    const response = await api.createBotToken(applicationId, ['read_messages', 'send_messages', 'read_members']);
     setBusy(false);
     if (!response.success) return setError(response.error || 'Could not issue token.');
     setToken(response.data?.token || '');

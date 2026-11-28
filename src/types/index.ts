@@ -75,6 +75,15 @@ export interface Message {
   replyTo?: Message;
   isPinned: boolean;
   mentions: string[];
+  poll?: {
+    id: string;
+    question: string;
+    multipleChoice: boolean;
+    anonymous: boolean;
+    closedAt?: string | null;
+    expiresAt?: string | null;
+    options: { id: string; label: string; voteCount?: number; votedByMe?: boolean; voters?: string[] }[];
+  };
 }
 
 export interface Attachment {

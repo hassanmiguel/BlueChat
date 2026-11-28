@@ -851,3 +851,17 @@ model AutoModRule {
   @@index([serverId, enabled])
   @@map("automod_rules")
 }
+
+
+model BotInstallation {
+  id            String   @id @default(cuid())
+  applicationId String
+  serverId      String
+  installedById String
+  permissions   String[] @default([])
+  createdAt     DateTime @default(now())
+
+  @@unique([applicationId, serverId])
+  @@index([serverId, createdAt])
+  @@map("bot_installations")
+}

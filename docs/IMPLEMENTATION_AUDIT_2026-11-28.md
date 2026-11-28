@@ -95,3 +95,22 @@ These are source-level changes only. They have **not** yet been typechecked or e
 **Not verified in this source-only audit:** runtime behavior, database migration execution, typecheck, lint, automated tests, production builds, browser behavior, load tests, SFU connectivity, billing provider webhooks, and deployment configuration.
 
 A feature is complete only after its database, backend, authorization, real-time behavior, frontend, tests, and documentation are all implemented and verified.
+
+## 7. Subsequent platform feature work
+
+Additional implementation has been committed after the initial authorization slice:
+
+- Messaging: polls (including anonymous voting), saved messages, read cursors, scheduled messages with a database-leased dispatcher, and a Community Hub.
+- Communities: advanced expiring/use-limited invites, default Member role assignment/backfill, forum posts and forum UI, onboarding/rules screening, and events/RSVPs.
+- Moderation: configurable AutoMod rule storage and enforcement for blocked phrases, mention limits, link limits, and duplicate messages.
+- Developer ecosystem: bot application registration and hashed scoped token lifecycle; channel webhook management and authenticated incoming webhook posting with idempotency.
+- Integrations: optional AI settings and permission-scoped channel summarization; optional LiveKit token issuance.
+- Uploads: new message/DM file uploads are private by default and require ownership or authorized conversation access for download.
+- Client: poll and schedule composer controls, poll rendering, forum channel UI, save-message action, Community Hub, and API client methods.
+- Database: additive SQL migration and Prisma schema models for the features above.
+
+See `docs/UPGRADE_IMPLEMENTATION_STATUS.md` for the full implemented/deferred breakdown and manual handoff.
+
+## 8. Verification status (updated)
+
+The user explicitly requested that no tests be run at this stage. Therefore, no typecheck, lint, Prisma validation/generation, build, test suite, migration, or runtime verification has been performed. All code and migration changes are unverified and must be treated as work in progress.

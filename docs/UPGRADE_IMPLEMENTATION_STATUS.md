@@ -33,7 +33,7 @@ The requested instruction was to add upgrade features without running tests. Acc
 - Configurable AutoMod rules for blocked phrases, mention limits, link limits, and duplicate messages; applied to normal and scheduled messages.
 
 ### Developer platform and integrations
-- Bot application registration and scoped bot token issuance/revocation. Token plaintext is returned once; only hashes are stored.
+- Bot application registration, community installation, scoped bot token issuance/revocation, bot token authentication, installation listing, and permission-checked channel message posting. Token plaintext is returned once; only hashes are stored.
 - Channel webhook creation/deletion/listing with one-time credentials.
 - Incoming webhook message endpoint with token + secret verification, rate limiting, and idempotency key support.
 - Optional AI server settings with opt-in summary/search/transcription flags and retention configuration.

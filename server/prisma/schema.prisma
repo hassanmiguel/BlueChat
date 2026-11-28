@@ -772,3 +772,48 @@ model ServerAiSettings {
   updatedAt           DateTime @updatedAt
   @@map("server_ai_settings")
 }
+
+
+// ============ PLATFORM UPGRADE: FORUMS & ONBOARDING ============
+model ForumPost {
+  id        String   @id @default(cuid())
+  channelId String
+  authorId  String
+  title     String
+  content   String   @db.Text
+  tags      String[] @default([])
+  isLocked  Boolean  @default(false)
+  isPinned  Boolean  @default(false)
+  isArchived Boolean @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([channelId, isArchived, createdAt])
+  @@index([authorId, createdAt])
+  @@map("forum_posts")
+}
+
+model ServerOnboarding {
+  id                String   @id @default(cuid())
+  serverId          String   @unique
+  enabled           Boolean  @default(false)
+  welcomeMessage    String?  @db.Text
+  rules             String[] @default([])
+  defaultChannelIds String[] @default([])
+  requireRuleAccept Boolean  @default(false)
+  updatedAt         DateTime @updatedAt
+
+  @@map("server_onboarding")
+}
+
+model ServerMemberScreening {
+  id          String   @id @default(cuid())
+  serverId    String
+  userId      String
+  acceptedAt  DateTime?
+  answers     Json?
+  createdAt   DateTime @default(now())
+
+  @@unique([serverId, userId])
+  @@map("server_member_screening")
+}

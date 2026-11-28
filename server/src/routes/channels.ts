@@ -8,6 +8,8 @@ import {
   requireChannelAccess,
   requireChannelManager,
   hasServerPermission,
+  canViewChannel,
+  PERMISSIONS,
 } from '../middleware/authz.js';
 
 export const channelRouter = Router();
@@ -34,7 +36,10 @@ channelRouter.get('/:serverId', authenticate, async (req: AuthRequest, res: Resp
       where: { serverId: req.params.serverId },
       orderBy: { position: 'asc' },
     });
-    res.json(channels);
+    const visible = await Promise.all(channels.map(async (channel) =>
+      (await canViewChannel(req.userId!, channel.id)) ? channel : null
+    ));
+    res.json(visible.filter(Boolean));
   } catch (error) {
     res.status(500).json({ error: 'Failed to get channels' });
   }
@@ -286,4 +291,49 @@ channelRouter.get('/:id/search', authenticate, requireChannelAccess, async (req:
   } catch (error) {
     res.status(500).json({ error: 'Failed to search' });
   }
+});
+
+
+// Channel-specific role overrides. Only permissions the actor already holds
+// may be granted or denied to another role.
+channelRouter.get('/:id/permissions', authenticate, requireChannelManager, async (req: AuthRequest, res: Response) => {
+  const overrides = await prisma.channelPermissionOverride.findMany({
+    where: { channelId: req.params.id },
+    include: { role: { select: { id: true, name: true, position: true } } },
+  });
+  return res.json(overrides);
+});
+
+channelRouter.put('/:id/permissions/:roleId', authenticate, requireChannelManager, async (req: AuthRequest, res: Response) => {
+  try {
+    const input = z.object({
+      allow: z.array(z.enum(PERMISSIONS)).max(PERMISSIONS.length),
+      deny: z.array(z.enum(PERMISSIONS)).max(PERMISSIONS.length),
+    }).strict().parse(req.body);
+    const overlap = input.allow.filter((permission) => input.deny.includes(permission));
+    if (overlap.length) return res.status(400).json({ error: 'A permission cannot be both allowed and denied' });
+    const channel = await prisma.channel.findUnique({ where: { id: req.params.id }, select: { serverId: true } });
+    if (!channel) return res.status(404).json({ error: 'Channel not found' });
+    const role = await prisma.role.findFirst({ where: { id: req.params.roleId, serverId: channel.serverId } });
+    if (!role) return res.status(404).json({ error: 'Role not found in this server' });
+    const requested = [...input.allow, ...input.deny];
+    const held = await Promise.all(requested.map((permission) => hasServerPermission(req.userId!, channel.serverId, permission)));
+    if (held.some((allowed) => !allowed)) return res.status(403).json({ error: 'You cannot configure permissions you do not possess' });
+    const override = await prisma.channelPermissionOverride.upsert({
+      where: { channelId_roleId: { channelId: req.params.id, roleId: req.params.roleId } },
+      update: input,
+      create: { channelId: req.params.id, roleId: req.params.roleId, ...input },
+    });
+    return res.json(override);
+  } catch (error) {
+    if (zodError(error, res)) return;
+    return res.status(500).json({ error: 'Failed to update channel permissions' });
+  }
+});
+
+channelRouter.delete('/:id/permissions/:roleId', authenticate, requireChannelManager, async (req: AuthRequest, res: Response) => {
+  const result = await prisma.channelPermissionOverride.deleteMany({
+    where: { channelId: req.params.id, roleId: req.params.roleId },
+  });
+  return res.json({ success: result.count === 1 });
 });

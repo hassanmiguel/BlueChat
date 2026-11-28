@@ -300,3 +300,4 @@ CREATE INDEX "bot_installations_serverId_createdAt_idx" ON "bot_installations"("
 ALTER TABLE "messages" ADD COLUMN "botApplicationId" TEXT;
 ALTER TABLE "messages"
   ADD CONSTRAINT "messages_botApplicationId_fkey" FOREIGN KEY ("botApplicationId") REFERENCES "bot_applications"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+ALTER TABLE "messages" ADD COLUMN "webhookName" TEXT;

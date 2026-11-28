@@ -61,6 +61,10 @@ channelRouter.post('/', authenticate, async (req: AuthRequest, res: Response) =>
     if (!(await hasServerPermission(req.userId!, serverId, 'create_channels'))) {
       return res.status(403).json({ error: 'Create Channels permission required' });
     }
+    if (categoryId) {
+      const category = await prisma.category.findFirst({ where: { id: categoryId, serverId }, select: { id: true } });
+      if (!category) return res.status(400).json({ error: 'Category must belong to the selected server' });
+    }
 
     const channel = await prisma.channel.create({
       data: {

@@ -262,7 +262,7 @@ serverRouter.post('/:id/roles', authenticate, requireServerManager, async (req: 
     const { name, color, permissions } = z.object({
       name: z.string().trim().min(1).max(50),
       color: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
-      permissions: z.array(z.string().max(64)).optional(),
+      permissions: z.array(z.enum(PERMISSIONS)).optional(),
     }).parse(req.body);
 
     const role = await prisma.role.create({

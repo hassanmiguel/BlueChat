@@ -441,13 +441,14 @@ export default function ChatArea() {
 function PollCard({ poll, channelId }: { poll: NonNullable<Message['poll']>; channelId: string }) {
   const [current, setCurrent] = useState(poll);
   const [busy, setBusy] = useState(false);
+  const [selected, setSelected] = useState<string[]>([]);
   useEffect(() => setCurrent(poll), [poll]);
   const closed = Boolean(current.closedAt) || Boolean(current.expiresAt && new Date(current.expiresAt) <= new Date());
   const total = current.options.reduce((sum, option) => sum + (option.voteCount || 0), 0);
-  const vote = async (optionId: string) => {
+  const vote = async (optionIds: string[]) => {
     if (busy || closed) return;
     setBusy(true);
-    const response = await api.votePoll(current.id, [optionId]);
+    const response = await api.votePoll(current.id, optionIds);
     if (response.success) {
       const refreshed = await api.getChannelPolls(channelId);
       const latest = refreshed.data?.find((item: any) => item.id === current.id);
@@ -469,13 +470,14 @@ function PollCard({ poll, channelId }: { poll: NonNullable<Message['poll']>; cha
           const count = option.voteCount || 0;
           const percent = total ? Math.round(count / total * 100) : 0;
           return (
-            <button key={option.id} disabled={busy || closed} onClick={() => void vote(option.id)} className="relative w-full overflow-hidden rounded-lg border border-dc-divider bg-dc-channel px-3 py-2 text-left text-sm disabled:cursor-default">
+            <button key={option.id} disabled={busy || closed} onClick={() => current.multipleChoice ? setSelected((old) => old.includes(option.id) ? old.filter((id) => id !== option.id) : [...old, option.id]) : void vote([option.id])} className={`relative w-full overflow-hidden rounded-lg border px-3 py-2 text-left text-sm disabled:cursor-default ${selected.includes(option.id) ? 'border-dc-brand' : 'border-dc-divider'} bg-dc-channel`}>
               <span className="absolute inset-y-0 left-0 bg-dc-brand/20" style={{ width: `${percent}%` }} />
               <span className="relative flex justify-between gap-3"><span>{option.label}{option.votedByMe ? ' ✓' : ''}</span><span className="text-xs text-dc-text-muted">{count} · {percent}%</span></span>
             </button>
           );
         })}
       </div>
+      {current.multipleChoice && !closed && <button disabled={busy || selected.length === 0} onClick={() => void vote(selected)} className="mt-3 rounded-lg bg-dc-brand px-3 py-2 text-xs font-semibold text-white disabled:opacity-50">Submit vote</button>}
       <p className="mt-2 text-[11px] text-dc-text-muted">{total} vote{total === 1 ? '' : 's'}{current.anonymous ? ' · Anonymous poll' : ''}</p>
     </div>
   );

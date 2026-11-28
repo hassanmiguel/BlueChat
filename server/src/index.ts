@@ -22,6 +22,7 @@ import { featureRouter } from './routes/features.js';
 import { dispatchScheduledMessages } from './workers/scheduledMessages.js';
 import { voiceRouter } from './routes/voice.js';
 import { webhookRouter } from './routes/webhooks.js';
+import { botRouter } from './routes/bots.js';
 import { verifyCsrf } from './middleware/auth.js';
 import { setupSocketHandlers } from './socket/index.js';
 
@@ -80,6 +81,7 @@ app.use('/api/auth/password', authLimiter);
 app.use('/api/auth/oauth', authLimiter);
 
 app.use('/api/webhooks', webhookRouter);
+app.use('/api/bots', botRouter);
 
 app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });

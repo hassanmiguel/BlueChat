@@ -28,6 +28,7 @@ import CallOverlay from './components/CallOverlay';
 import CallsPage from './pages/CallsPage';
 import NotificationsPage from './pages/NotificationsPage';
 import AddFriendPage from './pages/AddFriendPage';
+import CommunityHubPage from './pages/CommunityHubPage';
 import { useActivityStore } from './stores/activityStore';
 import { readPrefs } from './services/localProfile';
 import { loadCustomEmojis } from './services/emojiService';
@@ -112,6 +113,7 @@ function MainApp() {
   const pushRemoteNotification = useActivityStore((s) => s.pushRemote);
   const showCalls = useUIStore((s) => s.showCalls);
   const showNotifications = useUIStore((s) => s.showNotifications);
+  const showCommunityHub = useUIStore((s) => s.showCommunityHub);
   const showAddFriend = useUIStore((s) => s.showAddFriend);
   const addToast = useUIStore((s) => s.addNotification);
   const refreshFriends = useChatStore((s) => s.refreshFriends);
@@ -284,6 +286,7 @@ function MainApp() {
         {showAddFriend && <AddFriendPage key="add-friend" />}
       </AnimatePresence>
       {showUserSettings && <SettingsPage />}
+      {showCommunityHub && <CommunityHubPage />}
       {showDiscovery && <DiscoveryPage />}
     </motion.div>
   );

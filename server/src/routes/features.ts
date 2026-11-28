@@ -358,8 +358,8 @@ featureRouter.post('/servers/:serverId/webhooks', authenticate, async (req: Auth
     if (!(await hasServerPermission(req.userId!, req.params.serverId, 'manage_webhooks'))) return res.status(403).json({ error: 'Manage Webhooks permission required' });
     const channel = await prisma.channel.findFirst({ where: { id: channelId, serverId: req.params.serverId } });
     if (!channel) return res.status(400).json({ error: 'Channel does not belong to this server' });
-    const token = randomBytes(32).toString('base64url');
-    const secret = randomBytes(32).toString('base64url');
+    const token = `bc_wh_${randomBytes(32).toString('base64url')}`;
+    const secret = `bc_sec_${randomBytes(32).toString('base64url')}`;
     const hook = await prisma.platformWebhook.create({
       data: { serverId: req.params.serverId, channelId, creatorId: req.userId!, name, tokenHash: digestSecret(token), secretHash: digestSecret(secret) },
       select: { id: true, channelId: true, name: true, enabled: true, createdAt: true },

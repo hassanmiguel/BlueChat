@@ -650,6 +650,7 @@ model ScheduledMessage {
   scheduledAt DateTime
   sentAt      DateTime?
   cancelledAt DateTime?
+  processingAt DateTime?
   createdAt   DateTime  @default(now())
   @@index([scheduledAt, sentAt, cancelledAt])
   @@index([authorId, createdAt])

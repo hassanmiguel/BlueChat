@@ -88,7 +88,7 @@ featureRouter.post('/polls/:pollId/votes', authenticate, async (req: AuthRequest
     if (optionIds.some((id) => !poll.options.some((option) => option.id === id))) return res.status(400).json({ error: 'Invalid poll option' });
     await prisma.$transaction(async (tx) => {
       if (!poll.multipleChoice) {
-        await tx.pollVote.deleteMany({ where: { userId: req.userId!, option: { pollId: poll.id } } });
+        await tx.pollVote.deleteMany({ where: { userId: req.userId!, option: { is: { pollId: poll.id } } } });
       }
       for (const optionId of optionIds) {
         await tx.pollVote.upsert({
@@ -327,7 +327,7 @@ featureRouter.post('/developer/applications/:applicationId/tokens', authenticate
 
 featureRouter.delete('/developer/applications/:applicationId/tokens/:tokenId', authenticate, async (req: AuthRequest, res: Response) => {
   const token = await prisma.botToken.findFirst({
-    where: { id: req.params.tokenId, application: { id: req.params.applicationId, ownerId: req.userId! } },
+    where: { id: req.params.tokenId, application: { is: { id: req.params.applicationId, ownerId: req.userId! } } },
   });
   if (!token) return res.status(404).json({ error: 'Token not found' });
   await prisma.botToken.update({ where: { id: token.id }, data: { revokedAt: new Date() } });

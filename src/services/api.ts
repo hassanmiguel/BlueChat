@@ -508,6 +508,71 @@ class ApiClient {
   async searchMessages(channelId: string, query: string) {
     return this.request(`/channels/${channelId}/search?q=${encodeURIComponent(query)}`);
   }
+
+  // Community upgrade APIs: polls, saved messages, read cursors, scheduling and events.
+  async createPoll(channelId: string, data: { messageId: string; question: string; options: string[]; multipleChoice?: boolean; anonymous?: boolean; expiresAt?: string }) {
+    return this.request(`/features/channels/${channelId}/polls`, { method: 'POST', body: JSON.stringify(data) });
+  }
+
+  async getChannelPolls(channelId: string) {
+    return this.request(`/features/channels/${channelId}/polls`);
+  }
+
+  async votePoll(pollId: string, optionIds: string[]) {
+    return this.request(`/features/polls/${pollId}/votes`, { method: 'POST', body: JSON.stringify({ optionIds }) });
+  }
+
+  async closePoll(pollId: string) {
+    return this.request(`/features/polls/${pollId}/close`, { method: 'POST' });
+  }
+
+  async getSavedMessages() {
+    return this.request('/features/saved-messages');
+  }
+
+  async saveMessage(messageId: string) {
+    return this.request(`/features/messages/${messageId}/save`, { method: 'POST' });
+  }
+
+  async unsaveMessage(messageId: string) {
+    return this.request(`/features/messages/${messageId}/save`, { method: 'DELETE' });
+  }
+
+  async updateChannelReadState(channelId: string, messageId?: string) {
+    return this.request(`/features/channels/${channelId}/read-state`, { method: 'PUT', body: JSON.stringify({ messageId }) });
+  }
+
+  async getChannelReadState(channelId: string) {
+    return this.request(`/features/channels/${channelId}/read-state`);
+  }
+
+  async scheduleMessage(channelId: string, content: string, scheduledAt: string) {
+    return this.request(`/features/channels/${channelId}/scheduled-messages`, { method: 'POST', body: JSON.stringify({ content, scheduledAt }) });
+  }
+
+  async getScheduledMessages() {
+    return this.request('/features/scheduled-messages');
+  }
+
+  async cancelScheduledMessage(id: string) {
+    return this.request(`/features/scheduled-messages/${id}`, { method: 'DELETE' });
+  }
+
+  async createServerEvent(serverId: string, data: { title: string; description?: string; channelId?: string; location?: string; startsAt: string; endsAt?: string }) {
+    return this.request(`/features/servers/${serverId}/events`, { method: 'POST', body: JSON.stringify(data) });
+  }
+
+  async getServerEvents(serverId: string) {
+    return this.request(`/features/servers/${serverId}/events`);
+  }
+
+  async rsvpEvent(eventId: string, status: 'GOING' | 'INTERESTED' | 'NOT_GOING') {
+    return this.request(`/features/events/${eventId}/rsvp`, { method: 'PUT', body: JSON.stringify({ status }) });
+  }
+
+  async cancelServerEvent(eventId: string) {
+    return this.request(`/features/events/${eventId}`, { method: 'DELETE' });
+  }
 }
 
 export const api = new ApiClient(API_BASE);

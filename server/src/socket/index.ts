@@ -2,7 +2,7 @@ import { Server as SocketServer, Socket } from 'socket.io';
 import jwt from 'jsonwebtoken';
 import { config } from '../config.js';
 import { prisma } from '../middleware/auth.js';
-import { hasServerPermission, isServerMember } from '../middleware/authz.js';
+import { canViewChannel, hasServerPermission, isServerMember } from '../middleware/authz.js';
 
 interface AuthenticatedSocket extends Socket {
   userId?: string;
@@ -260,12 +260,8 @@ export function setupSocketHandlers(io: SocketServer) {
     });
 
     socket.on('channel:join', safe(async (channelId: string) => {
-      if (typeof channelId !== 'string') return;
-      const channel = await prisma.channel.findUnique({
-        where: { id: channelId },
-        select: { serverId: true },
-      });
-      if (channel && (await isServerMember(userId, channel.serverId))) {
+      if (typeof channelId !== 'string' || channelId.length > 128) return;
+      if (await canViewChannel(userId, channelId)) {
         socket.join(channelId);
       }
     }));

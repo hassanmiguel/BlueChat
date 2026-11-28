@@ -50,6 +50,95 @@ export const hasServerPermission = async (userId: string, serverId: string, perm
   ) ?? false;
 };
 
+/**
+ * Resolve a permission in a specific channel.
+ *
+ * Server-level role permissions form the base permission set. Channel role
+ * overrides are then applied with explicit deny taking precedence over allow.
+ * The server owner and roles carrying the administrator wildcard bypass
+ * channel overrides.
+ */
+/**
+ * Membership grants channel visibility by default for backward compatibility.
+ * A matching role override can explicitly hide a channel with deny:view_channel.
+ */
+export const canViewChannel = async (userId: string, channelId: string): Promise<boolean> => {
+  const channel = await prisma.channel.findUnique({
+    where: { id: channelId },
+    select: {
+      server: {
+        select: {
+          ownerId: true,
+          members: {
+            where: { userId },
+            select: { roles: { select: { roleId: true } } },
+          },
+        },
+      },
+      permissionOverrides: { select: { roleId: true, deny: true } },
+    },
+  });
+  if (!channel) return false;
+  if (channel.server.ownerId === userId) return true;
+
+  const member = channel.server.members[0];
+  if (!member) return false;
+  const roleIds = new Set(member.roles.map((assignment) => assignment.roleId));
+  return !channel.permissionOverrides.some(
+    (override) => roleIds.has(override.roleId) && override.deny.includes('view_channel'),
+  );
+};
+
+export const hasChannelPermission = async (
+  userId: string,
+  channelId: string,
+  permission: Permission,
+): Promise<boolean> => {
+  const channel = await prisma.channel.findUnique({
+    where: { id: channelId },
+    select: {
+      serverId: true,
+      server: {
+        select: {
+          ownerId: true,
+          members: {
+            where: { userId },
+            select: {
+              roles: {
+                select: {
+                  role: { select: { id: true, permissions: true } },
+                },
+              },
+            },
+          },
+        },
+      },
+      permissionOverrides: {
+        select: { roleId: true, allow: true, deny: true },
+      },
+    },
+  });
+
+  if (!channel) return false;
+  if (channel.server.ownerId === userId) return true;
+
+  const member = channel.server.members[0];
+  if (!member) return false;
+
+  const roles = member.roles.map((assignment) => assignment.role);
+  if (roles.some((role) => role.permissions.includes('*') || role.permissions.includes('administrator'))) {
+    return true;
+  }
+
+  const roleIds = new Set(roles.map((role) => role.id));
+  const applicable = channel.permissionOverrides.filter((override) => roleIds.has(override.roleId));
+
+  if (applicable.some((override) => override.deny.includes(permission))) return false;
+  if (applicable.some((override) => override.allow.includes(permission))) return true;
+
+  return roles.some((role) => role.permissions.includes(permission));
+};
+
 const topRolePosition = async (userId: string, serverId: string): Promise<number> => {
   const member = await prisma.serverMember.findUnique({
     where: { userId_serverId: { userId, serverId } },
@@ -133,8 +222,8 @@ export const requireChannelAccess = async (req: AuthRequest, res: Response, next
     select: { serverId: true },
   });
   if (!channel) return res.status(404).json({ error: 'Channel not found' });
-  if (!(await isServerMember(req.userId!, channel.serverId))) {
-    return res.status(403).json({ error: 'Not a member of this server' });
+  if (!(await canViewChannel(req.userId!, req.params.id))) {
+    return res.status(403).json({ error: 'You do not have access to this channel' });
   }
   if (await hasTimeout(req.userId!, channel.serverId)) {
     return res.status(403).json({ error: 'You are timed out in this server' });
@@ -143,24 +232,14 @@ export const requireChannelAccess = async (req: AuthRequest, res: Response, next
 };
 
 export const requireChannelPermission = (permission: Permission) => async (req: AuthRequest, res: Response, next: NextFunction) => {
-  const channel = await prisma.channel.findUnique({
-    where: { id: req.params.id },
-    select: { serverId: true },
-  });
-  if (!channel) return res.status(404).json({ error: 'Channel not found' });
-  if (!(await hasServerPermission(req.userId!, channel.serverId, permission))) {
-    return res.status(403).json({ error: `Missing permission: ${permission}` });
+  if (!(await hasChannelPermission(req.userId!, req.params.id, permission))) {
+    return res.status(403).json({ error: `Missing channel permission: ${permission}` });
   }
   next();
 };
 
 export const requireChannelManager = async (req: AuthRequest, res: Response, next: NextFunction) => {
-  const channel = await prisma.channel.findUnique({
-    where: { id: req.params.id },
-    select: { serverId: true },
-  });
-  if (!channel) return res.status(404).json({ error: 'Channel not found' });
-  if (!(await hasServerPermission(req.userId!, channel.serverId, 'manage_channels'))) {
+  if (!(await hasChannelPermission(req.userId!, req.params.id, 'manage_channels'))) {
     return res.status(403).json({ error: 'Manage Channels permission required' });
   }
   next();
@@ -191,10 +270,10 @@ export const requireMessageAccess = async (req: AuthRequest, res: Response, next
   if (!message) return res.status(404).json({ error: 'Message not found' });
   const channel = await prisma.channel.findUnique({
     where: { id: message.channelId },
-    select: { serverId: true },
+    select: { id: true, serverId: true },
   });
-  if (!channel || !(await isServerMember(req.userId!, channel.serverId))) {
-    return res.status(403).json({ error: 'Not a member of this server' });
+  if (!channel || !(await canViewChannel(req.userId!, channel.id))) {
+    return res.status(403).json({ error: 'You do not have access to this channel' });
   }
   next();
 };

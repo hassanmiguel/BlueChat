@@ -177,6 +177,16 @@ const topRolePosition = async (userId: string, serverId: string): Promise<number
   return member?.roles.reduce((max, assignment) => Math.max(max, assignment.role.position), 0) ?? -1;
 };
 
+export const canManageRole = async (actorId: string, roleId: string, serverId: string): Promise<boolean> => {
+  const [server, role] = await Promise.all([
+    prisma.server.findUnique({ where: { id: serverId }, select: { ownerId: true } }),
+    prisma.role.findFirst({ where: { id: roleId, serverId }, select: { position: true } }),
+  ]);
+  if (!server || !role) return false;
+  if (server.ownerId === actorId) return true;
+  return (await topRolePosition(actorId, serverId)) > role.position;
+};
+
 export const canManageMember = async (actorId: string, targetId: string, serverId: string): Promise<boolean> => {
   const server = await prisma.server.findUnique({ where: { id: serverId }, select: { ownerId: true } });
   if (!server) return false;

@@ -184,7 +184,7 @@ channelRouter.post('/:id/messages', authenticate, requireChannelAccess, async (r
     if (attachments?.length && !(await hasChannelPermission(req.userId!, req.params.id, 'attach_files'))) {
       return res.status(403).json({ error: 'You cannot attach files in this channel' });
     }
-    const privateUploadIds = (attachments || []).map((file) => file.url.match(/\\/api\\/upload\\/private\\/([A-Za-z0-9-]+)$/)?.[1]).filter((id): id is string => Boolean(id));
+    const privateUploadIds = (attachments || []).map((file) => file.url.match(new RegExp('/api/upload/private/([A-Za-z0-9-]+)$'))?.[1]).filter((id): id is string => Boolean(id));
     if (privateUploadIds.length) {
       const ownedUploads = await prisma.privateUpload.findMany({
         where: { id: { in: privateUploadIds }, ownerId: req.userId! },

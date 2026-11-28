@@ -225,6 +225,7 @@ model Channel {
   messages    Message[]
   permissionOverrides ChannelPermissionOverride[]
   threads     Thread[]
+  polls       Poll[]
 
   @@map("channels")
 }
@@ -271,6 +272,7 @@ model Message {
   reactions   Reaction[]
   mentions    Mention[]
   edits       MessageEdit[]
+  poll        Poll?
 
   @@index([channelId, createdAt])
   @@map("messages")
@@ -601,6 +603,8 @@ model Poll {
   closedAt       DateTime?
   createdAt      DateTime     @default(now())
   options        PollOption[]
+  message        Message       @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  channel        Channel       @relation(fields: [channelId], references: [id], onDelete: Cascade)
   @@index([channelId, createdAt])
   @@map("polls")
 }

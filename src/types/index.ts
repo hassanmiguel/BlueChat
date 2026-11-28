@@ -75,6 +75,7 @@ export interface Message {
   replyTo?: Message;
   isPinned: boolean;
   mentions: string[];
+  botApplication?: { id: string; name: string; avatar?: string | null };
   poll?: {
     id: string;
     question: string;

@@ -78,7 +78,19 @@ The current voice signaling implementation should not be represented as scalable
 - External services must fail clearly and remain optional until configured.
 - Update this audit as findings are resolved, with links to commits/tests and explicit blocked dependencies.
 
-## 5. Verification status
+## 5. Changes made on the working branch
+
+The following source changes have been committed on `audit/discord-platform-upgrade`:
+
+- Added a channel-level permission resolver that combines server role permissions with channel role overrides.
+- Applied explicit deny precedence over channel allow overrides, while retaining owner/administrator bypass behavior.
+- Updated channel permission middleware and channel-manager middleware to use the channel-level resolver.
+- Added a backward-compatible channel visibility check: server membership grants visibility by default, while a matching role override can explicitly deny `view_channel`.
+- Applied that visibility check to channel access, message access, and Socket.IO channel-room joins.
+
+These are source-level changes only. They have **not** yet been typechecked or exercised against a live database/socket server in this environment. Review and add regression tests before merging.
+
+## 6. Verification status
 
 **Not verified in this source-only audit:** runtime behavior, database migration execution, typecheck, lint, automated tests, production builds, browser behavior, load tests, SFU connectivity, billing provider webhooks, and deployment configuration.
 

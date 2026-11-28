@@ -82,6 +82,7 @@ export const canViewChannel = async (userId: string, channelId: string): Promise
   const channel = await prisma.channel.findUnique({
     where: { id: channelId },
     select: {
+      serverId: true,
       server: {
         select: {
           ownerId: true,
@@ -101,17 +102,12 @@ export const canViewChannel = async (userId: string, channelId: string): Promise
   if (!member) return false;
 
   const onboarding = await prisma.serverOnboarding.findUnique({
-    where: { serverId: channel.server.members.length ? (await prisma.channel.findUnique({ where: { id: channelId }, select: { serverId: true } }))!.serverId : '' },
+    where: { serverId: channel.serverId },
     select: { enabled: true, requireRuleAccept: true },
   });
   if (onboarding?.enabled && onboarding.requireRuleAccept) {
     const screening = await prisma.serverMemberScreening.findUnique({
-      where: {
-        serverId_userId: {
-          serverId: (await prisma.channel.findUnique({ where: { id: channelId }, select: { serverId: true } }))!.serverId,
-          userId,
-        },
-      },
+      where: { serverId_userId: { serverId: channel.serverId, userId } },
       select: { acceptedAt: true },
     });
     if (!screening?.acceptedAt) return false;

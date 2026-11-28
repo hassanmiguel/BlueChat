@@ -184,6 +184,14 @@ channelRouter.post('/:id/messages', authenticate, requireChannelAccess, async (r
     if (attachments?.length && !(await hasChannelPermission(req.userId!, req.params.id, 'attach_files'))) {
       return res.status(403).json({ error: 'You cannot attach files in this channel' });
     }
+    const privateUploadIds = (attachments || []).map((file) => file.url.match(/\\/api\\/upload\\/private\\/([A-Za-z0-9-]+)$/)?.[1]).filter((id): id is string => Boolean(id));
+    if (privateUploadIds.length) {
+      const ownedUploads = await prisma.privateUpload.findMany({
+        where: { id: { in: privateUploadIds }, ownerId: req.userId! },
+        select: { id: true },
+      });
+      if (ownedUploads.length !== new Set(privateUploadIds).size) return res.status(400).json({ error: 'One or more private attachments are invalid or not owned by you' });
+    }
     if (channel.slowMode) {
       const recent = await prisma.message.findFirst({
         where: {

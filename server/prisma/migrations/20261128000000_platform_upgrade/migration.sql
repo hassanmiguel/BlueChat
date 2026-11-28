@@ -266,3 +266,21 @@ CREATE TABLE "automod_rules" (
   CONSTRAINT "automod_rules_pkey" PRIMARY KEY ("id")
 );
 CREATE INDEX "automod_rules_serverId_enabled_idx" ON "automod_rules"("serverId", "enabled");
+
+-- Bring existing Member roles up to the new baseline permission set.
+UPDATE "roles"
+SET "permissions" = ARRAY(
+  SELECT DISTINCT permission
+  FROM unnest("permissions" || ARRAY['view_channel','read_message_history','create_threads','create_polls','send_voice_messages']::TEXT[]) AS permission
+)
+WHERE "name" = 'Member';
+
+-- Assign the existing default Member role to current server members that have
+-- no such assignment yet; owners retain their existing owner bypass.
+INSERT INTO "role_members" ("id", "roleId", "memberId")
+SELECT md5(random()::text || clock_timestamp()::text || sm."id"), r."id", sm."id"
+FROM "server_members" sm
+JOIN "roles" r ON r."serverId" = sm."serverId" AND r."name" = 'Member'
+WHERE NOT EXISTS (
+  SELECT 1 FROM "role_members" rm WHERE rm."roleId" = r."id" AND rm."memberId" = sm."id"
+);

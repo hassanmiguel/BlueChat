@@ -252,3 +252,17 @@ CREATE INDEX "private_uploads_ownerId_createdAt_idx" ON "private_uploads"("owner
 ALTER TABLE "polls"
   ADD CONSTRAINT "polls_messageId_fkey" FOREIGN KEY ("messageId") REFERENCES "messages"("id") ON DELETE CASCADE ON UPDATE CASCADE,
   ADD CONSTRAINT "polls_channelId_fkey" FOREIGN KEY ("channelId") REFERENCES "channels"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+CREATE TABLE "automod_rules" (
+  "id" TEXT NOT NULL,
+  "serverId" TEXT NOT NULL,
+  "type" TEXT NOT NULL,
+  "pattern" TEXT,
+  "threshold" INTEGER NOT NULL DEFAULT 1,
+  "enabled" BOOLEAN NOT NULL DEFAULT true,
+  "action" TEXT NOT NULL DEFAULT 'BLOCK',
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "updatedAt" TIMESTAMP(3) NOT NULL,
+  CONSTRAINT "automod_rules_pkey" PRIMARY KEY ("id")
+);
+CREATE INDEX "automod_rules_serverId_enabled_idx" ON "automod_rules"("serverId", "enabled");

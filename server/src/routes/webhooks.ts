@@ -13,7 +13,6 @@ const webhookLimiter = rateLimit({
   max: 30,
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: (req) => req.params.webhookId || req.ip,
   message: { error: 'Webhook rate limit exceeded' },
 });
 

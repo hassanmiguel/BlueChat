@@ -292,7 +292,7 @@ serverRouter.patch('/:id/roles/:roleId', authenticate, requireServerPermission('
     }).strict().parse(req.body);
     if (updates.position !== undefined) {
       const actorRole = await prisma.role.findFirst({
-        where: { serverId: req.params.id, members: { some: { member: { userId: req.userId! } } } },
+        where: { serverId: req.params.id, members: { some: { member: { is: { userId: req.userId! } } } } },
         orderBy: { position: 'desc' }, select: { position: true },
       });
       const server = await prisma.server.findUnique({ where: { id: req.params.id }, select: { ownerId: true } });

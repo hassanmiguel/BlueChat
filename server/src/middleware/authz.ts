@@ -74,6 +74,19 @@ export const hasServerPermission = async (userId: string, serverId: string, perm
  * The server owner and roles carrying the administrator wildcard bypass
  * channel overrides.
  */
+export const hasCompletedOnboarding = async (userId: string, serverId: string): Promise<boolean> => {
+  const onboarding = await prisma.serverOnboarding.findUnique({
+    where: { serverId },
+    select: { enabled: true, requireRuleAccept: true },
+  });
+  if (!onboarding?.enabled || !onboarding.requireRuleAccept) return true;
+  const screening = await prisma.serverMemberScreening.findUnique({
+    where: { serverId_userId: { serverId, userId } },
+    select: { acceptedAt: true },
+  });
+  return Boolean(screening?.acceptedAt);
+};
+
 /**
  * Membership grants channel visibility by default for backward compatibility.
  * A matching role override can explicitly hide a channel with deny:view_channel.
@@ -102,17 +115,7 @@ export const canViewChannel = async (userId: string, channelId: string): Promise
   if (!member) return false;
   if (member.roles.some((assignment) => assignment.role.permissions.includes('*') || assignment.role.permissions.includes('administrator'))) return true;
 
-  const onboarding = await prisma.serverOnboarding.findUnique({
-    where: { serverId: channel.serverId },
-    select: { enabled: true, requireRuleAccept: true },
-  });
-  if (onboarding?.enabled && onboarding.requireRuleAccept) {
-    const screening = await prisma.serverMemberScreening.findUnique({
-      where: { serverId_userId: { serverId: channel.serverId, userId } },
-      select: { acceptedAt: true },
-    });
-    if (!screening?.acceptedAt) return false;
-  }
+  if (!(await hasCompletedOnboarding(userId, channel.serverId))) return false;
 
   const roleIds = new Set(member.roles.map((assignment) => assignment.roleId));
   return !channel.permissionOverrides.some(

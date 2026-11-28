@@ -125,7 +125,7 @@ featureRouter.get('/saved-messages', authenticate, async (req: AuthRequest, res:
       where: { id: item.messageId, deletedAt: null },
       include: { author: { select: { id: true, username: true, avatar: true } }, channel: { select: { id: true, name: true, serverId: true } } },
     });
-    if (!message || !(await isServerMember(req.userId!, message.channel.serverId))) return null;
+    if (!message || !(await canViewChannel(req.userId!, message.channelId))) return null;
     return { ...item, message };
   }));
   return res.json(visible.filter(Boolean));
@@ -151,7 +151,7 @@ featureRouter.put('/channels/:channelId/read-state', authenticate, async (req: A
   try {
     const { messageId } = z.object({ messageId: z.string().max(64).optional() }).parse(req.body);
     const channel = await prisma.channel.findUnique({ where: { id: req.params.channelId }, select: { serverId: true } });
-    if (!channel || !(await isServerMember(req.userId!, channel.serverId))) return res.status(404).json({ error: 'Channel not found' });
+    if (!channel || !(await canViewChannel(req.userId!, req.params.channelId))) return res.status(404).json({ error: 'Channel not found' });
     if (messageId && !(await prisma.message.findFirst({ where: { id: messageId, channelId: req.params.channelId } }))) return res.status(400).json({ error: 'Message does not belong to this channel' });
     const receipt = await prisma.readReceipt.upsert({
       where: { userId_channelId: { userId: req.userId!, channelId: req.params.channelId } },

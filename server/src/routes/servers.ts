@@ -199,7 +199,15 @@ serverRouter.post('/join', authenticate, async (req: AuthRequest, res: Response)
           });
           if (consumed.count !== 1) throw new Error('INVITE_UNAVAILABLE');
         }
-        await tx.serverMember.create({ data: { userId: req.userId!, serverId } });
+        const member = await tx.serverMember.create({ data: { userId: req.userId!, serverId } });
+        const defaultRole = await tx.role.findFirst({
+          where: { serverId, name: 'Member' },
+          orderBy: { position: 'asc' },
+          select: { id: true },
+        });
+        if (defaultRole) {
+          await tx.roleMember.create({ data: { roleId: defaultRole.id, memberId: member.id } });
+        }
       });
     } catch (error) {
       if (error instanceof Error && error.message === 'INVITE_UNAVAILABLE') return res.status(410).json({ error: 'Invite is no longer available' });

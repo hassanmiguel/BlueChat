@@ -72,7 +72,7 @@ serverRouter.post('/', authenticate, async (req: AuthRequest, res: Response) => 
             {
               name: 'Member',
               color: '#949ba4',
-              permissions: ['send_messages', 'attach_files', 'connect', 'speak', 'video', 'screen_share'],
+              permissions: ['view_channel', 'read_message_history', 'send_messages', 'attach_files', 'connect', 'speak', 'video', 'screen_share', 'create_threads', 'create_polls', 'send_voice_messages'],
               position: 0,
             },
           ],

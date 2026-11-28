@@ -284,3 +284,15 @@ JOIN "roles" r ON r."serverId" = sm."serverId" AND r."name" = 'Member'
 WHERE NOT EXISTS (
   SELECT 1 FROM "role_members" rm WHERE rm."roleId" = r."id" AND rm."memberId" = sm."id"
 );
+
+CREATE TABLE "bot_installations" (
+  "id" TEXT NOT NULL,
+  "applicationId" TEXT NOT NULL,
+  "serverId" TEXT NOT NULL,
+  "installedById" TEXT NOT NULL,
+  "permissions" TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT "bot_installations_pkey" PRIMARY KEY ("id")
+);
+CREATE UNIQUE INDEX "bot_installations_applicationId_serverId_key" ON "bot_installations"("applicationId", "serverId");
+CREATE INDEX "bot_installations_serverId_createdAt_idx" ON "bot_installations"("serverId", "createdAt");

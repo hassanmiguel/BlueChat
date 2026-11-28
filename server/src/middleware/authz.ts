@@ -270,7 +270,7 @@ export const requireMessageAccess = async (req: AuthRequest, res: Response, next
   if (!message) return res.status(404).json({ error: 'Message not found' });
   const channel = await prisma.channel.findUnique({
     where: { id: message.channelId },
-    select: { serverId: true },
+    select: { id: true, serverId: true },
   });
   if (!channel || !(await canViewChannel(req.userId!, channel.id))) {
     return res.status(403).json({ error: 'You do not have access to this channel' });

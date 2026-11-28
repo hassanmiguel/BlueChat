@@ -88,7 +88,7 @@ export const canViewChannel = async (userId: string, channelId: string): Promise
           ownerId: true,
           members: {
             where: { userId },
-            select: { roles: { select: { roleId: true } } },
+            select: { roles: { select: { roleId: true, role: { select: { permissions: true } } } } },
           },
         },
       },
@@ -100,6 +100,7 @@ export const canViewChannel = async (userId: string, channelId: string): Promise
 
   const member = channel.server.members[0];
   if (!member) return false;
+  if (member.roles.some((assignment) => assignment.role.permissions.includes('*') || assignment.role.permissions.includes('administrator'))) return true;
 
   const onboarding = await prisma.serverOnboarding.findUnique({
     where: { serverId: channel.serverId },

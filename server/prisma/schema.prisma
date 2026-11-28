@@ -274,6 +274,7 @@ model Message {
   edits       MessageEdit[]
   poll        Poll?
   botApplicationId String?
+  webhookName String?
   botApplication BotApplication? @relation(fields: [botApplicationId], references: [id], onDelete: SetNull)
 
   @@index([channelId, createdAt])

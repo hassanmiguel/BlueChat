@@ -21,7 +21,7 @@ export const getAutoModViolation = async (
       if (mentions > rule.threshold) return `Message exceeds the server mention limit (${rule.threshold})`;
     }
     if (rule.type === 'MAX_LINKS') {
-      const links = (content.match(/https?:\\/\\/[^\\s]+/gi) || []).length;
+      const links = (content.match(new RegExp('https?://[^\\s]+', 'gi')) || []).length;
       if (links > rule.threshold) return `Message exceeds the server link limit (${rule.threshold})`;
     }
     if (rule.type === 'DUPLICATE_MESSAGE') {

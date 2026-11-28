@@ -14,6 +14,7 @@ import TypingIndicator from './TypingIndicator';
 import Avatar from './Avatar';
 import ContextMenu, { useContextMenu } from './ContextMenu';
 import NotificationBell from './NotificationBell';
+import ForumChannelView from './ForumChannelView';
 
 
 export default function ChatArea() {
@@ -281,6 +282,10 @@ export default function ChatArea() {
 
   // At this point channel is defined
   const activeChannel = channel;
+
+  if (activeChannel.type === 'forum') {
+    return <ForumChannelView channelId={activeChannel.id} channelName={activeChannel.name} topic={activeChannel.topic} />;
+  }
 
   const getChannelHeaderIcon = () => {
     switch (activeChannel.type) {

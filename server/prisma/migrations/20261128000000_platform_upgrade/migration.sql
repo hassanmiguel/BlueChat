@@ -193,3 +193,45 @@ CREATE TABLE "server_ai_settings" (
   CONSTRAINT "server_ai_settings_pkey" PRIMARY KEY ("id")
 );
 CREATE UNIQUE INDEX "server_ai_settings_serverId_key" ON "server_ai_settings"("serverId");
+
+ 
+CREATE TABLE "forum_posts" (
+  "id" TEXT NOT NULL,
+  "channelId" TEXT NOT NULL,
+  "authorId" TEXT NOT NULL,
+  "title" TEXT NOT NULL,
+  "content" TEXT NOT NULL,
+  "tags" TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
+  "isLocked" BOOLEAN NOT NULL DEFAULT false,
+  "isPinned" BOOLEAN NOT NULL DEFAULT false,
+  "isArchived" BOOLEAN NOT NULL DEFAULT false,
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "updatedAt" TIMESTAMP(3) NOT NULL,
+  CONSTRAINT "forum_posts_pkey" PRIMARY KEY ("id")
+);
+CREATE INDEX "forum_posts_channelId_isArchived_createdAt_idx" ON "forum_posts"("channelId", "isArchived", "createdAt");
+CREATE INDEX "forum_posts_authorId_createdAt_idx" ON "forum_posts"("authorId", "createdAt");
+
+CREATE TABLE "server_onboarding" (
+  "id" TEXT NOT NULL,
+  "serverId" TEXT NOT NULL,
+  "enabled" BOOLEAN NOT NULL DEFAULT false,
+  "welcomeMessage" TEXT,
+  "rules" TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
+  "defaultChannelIds" TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
+  "requireRuleAccept" BOOLEAN NOT NULL DEFAULT false,
+  "updatedAt" TIMESTAMP(3) NOT NULL,
+  CONSTRAINT "server_onboarding_pkey" PRIMARY KEY ("id")
+);
+CREATE UNIQUE INDEX "server_onboarding_serverId_key" ON "server_onboarding"("serverId");
+
+CREATE TABLE "server_member_screening" (
+  "id" TEXT NOT NULL,
+  "serverId" TEXT NOT NULL,
+  "userId" TEXT NOT NULL,
+  "acceptedAt" TIMESTAMP(3),
+  "answers" JSONB,
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT "server_member_screening_pkey" PRIMARY KEY ("id")
+);
+CREATE UNIQUE INDEX "server_member_screening_serverId_userId_key" ON "server_member_screening"("serverId", "userId");

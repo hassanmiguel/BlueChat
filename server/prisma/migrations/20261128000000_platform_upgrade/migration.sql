@@ -296,3 +296,7 @@ CREATE TABLE "bot_installations" (
 );
 CREATE UNIQUE INDEX "bot_installations_applicationId_serverId_key" ON "bot_installations"("applicationId", "serverId");
 CREATE INDEX "bot_installations_serverId_createdAt_idx" ON "bot_installations"("serverId", "createdAt");
+
+ALTER TABLE "messages" ADD COLUMN "botApplicationId" TEXT;
+ALTER TABLE "messages"
+  ADD CONSTRAINT "messages_botApplicationId_fkey" FOREIGN KEY ("botApplicationId") REFERENCES "bot_applications"("id") ON DELETE SET NULL ON UPDATE CASCADE;

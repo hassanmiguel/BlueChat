@@ -300,6 +300,8 @@ export const requireMessageAuthorOrManager = async (req: AuthRequest, res: Respo
   if (!(await canViewChannel(req.userId!, message.channelId))) {
     return res.status(403).json({ error: 'You do not have access to this channel' });
   }
+  const messageChannel = await prisma.channel.findUnique({ where: { id: message.channelId }, select: { serverId: true } });
+  if (messageChannel && await hasTimeout(req.userId!, messageChannel.serverId)) return res.status(403).json({ error: 'You are timed out in this server' });
   if (message.authorId === req.userId) return next();
 
   if (await hasChannelPermission(req.userId!, message.channelId, 'manage_messages')) return next();
@@ -319,5 +321,6 @@ export const requireMessageAccess = async (req: AuthRequest, res: Response, next
   if (!channel || !(await canViewChannel(req.userId!, channel.id))) {
     return res.status(403).json({ error: 'You do not have access to this channel' });
   }
+  if (await hasTimeout(req.userId!, channel.serverId)) return res.status(403).json({ error: 'You are timed out in this server' });
   next();
 };

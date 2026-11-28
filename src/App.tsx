@@ -123,7 +123,14 @@ function MainApp() {
     primeAudioOnGesture();
     loadActivity(user?.id);
     void loadRemoteNotifications();
-    hydrate();
+    void (async () => {
+      await hydrate();
+      const inviteMatch = window.location.pathname.match(/^\\/invite\\/([^/]+)\\/?$/);
+      if (inviteMatch) {
+        await useChatStore.getState().joinServer(decodeURIComponent(inviteMatch[1]));
+        window.history.replaceState({}, document.title, '/');
+      }
+    })();
     socketService.connect();
     return () => {
       socketService.disconnect();

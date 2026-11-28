@@ -591,6 +591,18 @@ class ApiClient {
     return this.request(`/features/developer/applications/${applicationId}/tokens/${tokenId}`, { method: 'DELETE' });
   }
 
+  async getBotInstallations(serverId: string) {
+    return this.request(`/features/servers/${serverId}/bot-installations`);
+  }
+
+  async installBot(serverId: string, applicationId: string, permissions: string[] = ['read_messages']) {
+    return this.request(`/features/servers/${serverId}/bot-installations`, { method: 'POST', body: JSON.stringify({ applicationId, permissions }) });
+  }
+
+  async uninstallBot(serverId: string, applicationId: string) {
+    return this.request(`/features/servers/${serverId}/bot-installations/${applicationId}`, { method: 'DELETE' });
+  }
+
   async getServerWebhooks(serverId: string) {
     return this.request(`/features/servers/${serverId}/webhooks`);
   }

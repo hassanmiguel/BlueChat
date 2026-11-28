@@ -602,7 +602,8 @@ featureRouter.post('/servers/:serverId/ai/summarize', authenticate, async (req: 
     });
     if (!messages.length) return res.json({ summary: 'There are no messages to summarize.' });
 
-    const endpoint = `${config.ai.baseUrl.replace(/\\/$/, '')}/chat/completions`;
+    const baseUrl = config.ai.baseUrl.endsWith('/') ? config.ai.baseUrl.slice(0, -1) : config.ai.baseUrl;
+    const endpoint = `${baseUrl}/chat/completions`;
     const response = await fetch(endpoint, {
       method: 'POST',
       headers: {
@@ -614,7 +615,7 @@ featureRouter.post('/servers/:serverId/ai/summarize', authenticate, async (req: 
         temperature: 0.2,
         messages: [
           { role: 'system', content: 'Summarize the provided authorized community discussion. Separate decisions, action items, and unresolved questions. Do not invent facts.' },
-          { role: 'user', content: messages.reverse().map((message) => `[${message.author.username}] ${message.content}`).join('\\n').slice(0, 24000) },
+          { role: 'user', content: messages.reverse().map((message) => `[${message.author.username}] ${message.content}`).join(String.fromCharCode(10)).slice(0, 24000) },
         ],
       }),
       signal: AbortSignal.timeout(30_000),

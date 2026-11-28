@@ -235,3 +235,16 @@ CREATE TABLE "server_member_screening" (
   CONSTRAINT "server_member_screening_pkey" PRIMARY KEY ("id")
 );
 CREATE UNIQUE INDEX "server_member_screening_serverId_userId_key" ON "server_member_screening"("serverId", "userId");
+
+CREATE TABLE "private_uploads" (
+  "id" TEXT NOT NULL,
+  "ownerId" TEXT NOT NULL,
+  "storageKey" TEXT NOT NULL,
+  "originalName" TEXT NOT NULL,
+  "mimeType" TEXT NOT NULL,
+  "size" INTEGER NOT NULL,
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT "private_uploads_pkey" PRIMARY KEY ("id")
+);
+CREATE UNIQUE INDEX "private_uploads_storageKey_key" ON "private_uploads"("storageKey");
+CREATE INDEX "private_uploads_ownerId_createdAt_idx" ON "private_uploads"("ownerId", "createdAt");

@@ -8,6 +8,7 @@ type Tab = 'events' | 'saved' | 'scheduled' | 'developers';
 
 export default function CommunityHubPage() {
   const activeServerId = useChatStore((s) => s.activeServerId);
+  const activeChannelId = useChatStore((s) => s.activeChannelId);
   const servers = useChatStore((s) => s.servers);
   const setShowCommunityHub = useUIStore((s) => s.setShowCommunityHub);
   const [tab, setTab] = useState<Tab>('events');
@@ -20,6 +21,8 @@ export default function CommunityHubPage() {
   const [startsAt, setStartsAt] = useState('');
   const [appName, setAppName] = useState('');
   const [token, setToken] = useState('');
+  const [summary, setSummary] = useState('');
+  const [summarizing, setSummarizing] = useState(false);
 
   const activeServer = servers.find((server) => server.id === activeServerId);
 
@@ -47,6 +50,15 @@ export default function CommunityHubPage() {
   };
 
   useEffect(() => { void load(); }, [tab, activeServerId]);
+
+  const summarizeActiveChannel = async () => {
+    if (!activeServerId || !activeChannelId) return;
+    setSummarizing(true); setError(''); setSummary('');
+    const response = await api.summarizeChannel(activeServerId, activeChannelId);
+    setSummarizing(false);
+    if (!response.success) setError(response.error || 'AI summary is unavailable. Enable it in server settings and configure a provider.');
+    else setSummary(response.data?.summary || '');
+  };
 
   const createEvent = async () => {
     if (!activeServerId || !title.trim() || !startsAt) return;
@@ -107,6 +119,7 @@ export default function CommunityHubPage() {
             <p className="text-xs text-dc-text-muted">{activeServer?.name || 'Personal tools and developer workspace'}</p>
           </div>
           <div className="flex items-center gap-2">
+            {activeServerId && activeChannelId && <button disabled={summarizing} onClick={() => void summarizeActiveChannel()} className="rounded-lg bg-dc-hover px-3 py-2 text-xs disabled:opacity-50">{summarizing ? 'Summarizing…' : 'Summarize channel'}</button>}
             <button onClick={() => void load()} className="p-2 rounded-lg hover:bg-dc-hover" title="Refresh"><RefreshCw size={17} /></button>
             <button onClick={() => setShowCommunityHub(false)} className="p-2 rounded-lg hover:bg-dc-hover" title="Close"><X size={19} /></button>
           </div>
@@ -121,6 +134,7 @@ export default function CommunityHubPage() {
         <main className="flex-1 overflow-y-auto p-5 space-y-4">
           {error && <div role="alert" className="rounded-lg border border-red-500/40 bg-red-500/10 p-3 text-sm text-red-300">{error}</div>}
           {notice && <div role="status" className="rounded-lg border border-green-500/30 bg-green-500/10 p-3 text-sm text-green-300">{notice}</div>}
+          {summary && <section className="rounded-xl border border-dc-brand/40 bg-dc-brand/10 p-4"><h3 className="font-semibold text-sm mb-2">Channel summary</h3><p className="text-sm whitespace-pre-wrap">{summary}</p></section>}
           {token && (
             <div className="rounded-xl border border-yellow-500/40 bg-yellow-500/10 p-4 space-y-2">
               <p className="text-sm font-semibold">New bot token — shown once</p>

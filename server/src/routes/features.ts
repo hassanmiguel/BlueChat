@@ -2,7 +2,7 @@ import { Router, Response } from 'express';
 import { createHash, randomBytes } from 'node:crypto';
 import { z } from 'zod';
 import { prisma, authenticate, AuthRequest } from '../middleware/auth.js';
-import { hasServerPermission, isServerMember } from '../middleware/authz.js';
+import { canViewChannel, hasChannelPermission, hasServerPermission, isServerMember } from '../middleware/authz.js';
 
 export const featureRouter = Router();
 
@@ -17,7 +17,7 @@ const sendValidationError = (error: unknown, res: Response) => {
 const canManageChannel = async (userId: string, channelId: string) => {
   const channel = await prisma.channel.findUnique({ where: { id: channelId }, select: { serverId: true } });
   if (!channel) return null;
-  const allowed = await hasServerPermission(userId, channel.serverId, 'manage_messages');
+  const allowed = await hasChannelPermission(userId, channelId, 'manage_messages');
   return allowed ? channel : null;
 };
 
@@ -34,8 +34,8 @@ featureRouter.post('/channels/:channelId/polls', authenticate, async (req: AuthR
       expiresAt: z.string().datetime().optional(),
     }).parse(req.body);
     const channel = await prisma.channel.findUnique({ where: { id: req.params.channelId }, select: { id: true, serverId: true } });
-    if (!channel || !(await isServerMember(req.userId!, channel.serverId))) return res.status(404).json({ error: 'Channel not found' });
-    if (!(await hasServerPermission(req.userId!, channel.serverId, 'send_messages'))) return res.status(403).json({ error: 'Cannot create polls in this channel' });
+    if (!channel || !(await canViewChannel(req.userId!, req.params.channelId))) return res.status(404).json({ error: 'Channel not found' });
+    if (!(await hasChannelPermission(req.userId!, req.params.channelId, 'send_messages'))) return res.status(403).json({ error: 'Cannot create polls in this channel' });
     if (new Set(input.options.map((v) => v.toLocaleLowerCase())).size !== input.options.length) return res.status(400).json({ error: 'Poll options must be unique' });
     const message = await prisma.message.findFirst({ where: { id: input.messageId, channelId: channel.id, authorId: req.userId!, deletedAt: null } });
     if (!message) return res.status(404).json({ error: 'Poll message not found or not owned by you' });
@@ -58,7 +58,7 @@ featureRouter.post('/channels/:channelId/polls', authenticate, async (req: AuthR
 
 featureRouter.get('/channels/:channelId/polls', authenticate, async (req: AuthRequest, res: Response) => {
   const channel = await prisma.channel.findUnique({ where: { id: req.params.channelId }, select: { serverId: true } });
-  if (!channel || !(await isServerMember(req.userId!, channel.serverId))) return res.status(404).json({ error: 'Channel not found' });
+  if (!channel || !(await canViewChannel(req.userId!, req.params.channelId))) return res.status(404).json({ error: 'Channel not found' });
   const polls = await prisma.poll.findMany({
     where: { channelId: req.params.channelId },
     include: { options: { include: { votes: { select: { userId: true } } } } },
@@ -81,7 +81,8 @@ featureRouter.post('/polls/:pollId/votes', authenticate, async (req: AuthRequest
     if (new Set(optionIds).size !== optionIds.length) return res.status(400).json({ error: 'Duplicate poll options' });
     const poll = await prisma.poll.findUnique({ where: { id: req.params.pollId }, include: { options: true } });
     if (!poll) return res.status(404).json({ error: 'Poll not found' });
-    if (!(await isServerMember(req.userId!, (await prisma.channel.findUnique({ where: { id: poll.channelId }, select: { serverId: true } }))!.serverId))) return res.status(403).json({ error: 'Not a channel member' });
+    const pollChannel = await prisma.channel.findUnique({ where: { id: poll.channelId }, select: { serverId: true } });
+    if (!pollChannel || !(await canViewChannel(req.userId!, poll.channelId))) return res.status(403).json({ error: 'Not a channel member' });
     if (poll.closedAt || (poll.expiresAt && poll.expiresAt <= new Date())) return res.status(400).json({ error: 'Poll is closed' });
     if (!poll.multipleChoice && optionIds.length !== 1) return res.status(400).json({ error: 'Choose exactly one option' });
     if (optionIds.some((id) => !poll.options.some((option) => option.id === id))) return res.status(400).json({ error: 'Invalid poll option' });
@@ -132,7 +133,7 @@ featureRouter.get('/saved-messages', authenticate, async (req: AuthRequest, res:
 
 featureRouter.post('/messages/:messageId/save', authenticate, async (req: AuthRequest, res: Response) => {
   const message = await prisma.message.findFirst({ where: { id: req.params.messageId, deletedAt: null }, include: { channel: { select: { serverId: true } } } });
-  if (!message || !(await isServerMember(req.userId!, message.channel.serverId))) return res.status(404).json({ error: 'Message not found' });
+  if (!message || !(await canViewChannel(req.userId!, message.channelId))) return res.status(404).json({ error: 'Message not found' });
   const saved = await prisma.savedMessage.upsert({
     where: { userId_messageId: { userId: req.userId!, messageId: message.id } },
     update: {}, create: { userId: req.userId!, messageId: message.id },
@@ -179,8 +180,8 @@ featureRouter.post('/channels/:channelId/scheduled-messages', authenticate, asyn
       scheduledAt: z.string().datetime(),
     }).parse(req.body);
     const channel = await prisma.channel.findUnique({ where: { id: req.params.channelId }, select: { serverId: true } });
-    if (!channel || !(await isServerMember(req.userId!, channel.serverId))) return res.status(404).json({ error: 'Channel not found' });
-    if (!(await hasServerPermission(req.userId!, channel.serverId, 'send_messages'))) return res.status(403).json({ error: 'Cannot schedule messages in this channel' });
+    if (!channel || !(await canViewChannel(req.userId!, req.params.channelId))) return res.status(404).json({ error: 'Channel not found' });
+    if (!(await hasChannelPermission(req.userId!, req.params.channelId, 'send_messages'))) return res.status(403).json({ error: 'Cannot schedule messages in this channel' });
     const scheduledAt = new Date(input.scheduledAt);
     if (scheduledAt.getTime() < Date.now() + 60_000 || scheduledAt.getTime() > Date.now() + 90 * 24 * 60 * 60_000) return res.status(400).json({ error: 'Schedule must be between 1 minute and 90 days from now' });
     const item = await prisma.scheduledMessage.create({ data: { channelId: req.params.channelId, authorId: req.userId!, content: input.content, scheduledAt } });

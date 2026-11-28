@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { MessageSquare, Pin, Smile, Copy, Link, Flag, Trash2 } from 'lucide-react';
+import { MessageSquare, Pin, Smile, Copy, Link, Flag, Trash2, Bookmark } from 'lucide-react';
 
 interface ContextMenuProps {
   x: number;
@@ -10,6 +10,7 @@ interface ContextMenuProps {
   onAddReaction: () => void;
   onCopyText: () => void;
   onPin: () => void;
+  onSave: () => void;
   onCopyLink: () => void;
   onMarkUnread: () => void;
   onEdit?: () => void;
@@ -17,7 +18,7 @@ interface ContextMenuProps {
   onClose: () => void;
 }
 
-export default function ContextMenu({ x, y, isCurrentUser, onReply, onAddReaction, onCopyText, onPin, onCopyLink, onMarkUnread, onEdit, onDelete, onClose }: ContextMenuProps) {
+export default function ContextMenu({ x, y, isCurrentUser, onReply, onAddReaction, onCopyText, onPin, onSave, onCopyLink, onMarkUnread, onEdit, onDelete, onClose }: ContextMenuProps) {
   const [position, setPosition] = useState({ x, y });
 
   useEffect(() => {
@@ -47,6 +48,7 @@ export default function ContextMenu({ x, y, isCurrentUser, onReply, onAddReactio
     { icon: MessageSquare, label: 'Reply', action: onReply },
     { icon: Smile, label: 'Add Reaction', action: onAddReaction },
     { icon: Pin, label: 'Pin Message', action: onPin },
+    { icon: Bookmark, label: 'Save Message', action: onSave },
     { icon: Copy, label: 'Copy Text', action: onCopyText },
     { icon: Link, label: 'Copy Message Link', action: onCopyLink },
     { icon: MessageSquare, label: 'Mark Unread', action: onMarkUnread },

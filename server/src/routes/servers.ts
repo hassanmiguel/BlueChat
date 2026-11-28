@@ -10,6 +10,7 @@ import {
   canManageMember,
   canManageRole,
   PERMISSIONS,
+  canViewChannel,
 } from '../middleware/authz.js';
 import { logAudit } from '../utils/audit.js';
 
@@ -45,7 +46,13 @@ serverRouter.get('/', authenticate, async (req: AuthRequest, res: Response) => {
       where: { members: { some: { userId: req.userId } } },
       include: serverInclude,
     });
-    res.json(servers);
+    const visibleServers = await Promise.all(servers.map(async (server) => ({
+      ...server,
+      channels: (await Promise.all(server.channels.map(async (channel) =>
+        (await canViewChannel(req.userId!, channel.id)) ? channel : null
+      ))).filter(Boolean),
+    })));
+    res.json(visibleServers);
   } catch (error) {
     console.error('Get servers error:', error);
     res.status(500).json({ error: 'Failed to get servers' });
@@ -125,7 +132,10 @@ serverRouter.get('/:id', authenticate, requireServerMember, async (req: AuthRequ
       include: serverInclude,
     });
     if (!server) return res.status(404).json({ error: 'Server not found' });
-    res.json(server);
+    const visibleChannels = await Promise.all(server.channels.map(async (channel) =>
+      (await canViewChannel(req.userId!, channel.id)) ? channel : null
+    ));
+    res.json({ ...server, channels: visibleChannels.filter(Boolean) });
   } catch (error) {
     res.status(500).json({ error: 'Failed to get server' });
   }

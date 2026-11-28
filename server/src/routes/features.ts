@@ -631,3 +631,48 @@ featureRouter.post('/servers/:serverId/ai/summarize', authenticate, async (req: 
     return res.status(500).json({ error: 'Failed to summarize channel' });
   }
 });
+
+
+// Install/uninstall bot applications in communities. The selected permission
+// grants are stored separately from the bot's OAuth-like token scopes.
+featureRouter.get('/servers/:serverId/bot-installations', authenticate, async (req: AuthRequest, res: Response) => {
+  if (!(await hasServerPermission(req.userId!, req.params.serverId, 'manage_server'))) return res.status(403).json({ error: 'Manage Server permission required' });
+  const installations = await prisma.botInstallation.findMany({
+    where: { serverId: req.params.serverId },
+    include: { application: { select: { id: true, name: true, description: true, avatar: true } } },
+    orderBy: { createdAt: 'desc' },
+  });
+  return res.json(installations);
+});
+
+featureRouter.post('/servers/:serverId/bot-installations', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    if (!(await hasServerPermission(req.userId!, req.params.serverId, 'manage_server'))) return res.status(403).json({ error: 'Manage Server permission required' });
+    const input = z.object({
+      applicationId: z.string().min(1).max(64),
+      permissions: z.array(z.enum(['read_messages', 'send_messages', 'manage_messages', 'read_members'])).max(4).default(['read_messages']),
+    }).parse(req.body);
+    const app = await prisma.botApplication.findFirst({
+      where: { id: input.applicationId, OR: [{ ownerId: req.userId! }, { isPublic: true }] },
+      select: { id: true },
+    });
+    if (!app) return res.status(404).json({ error: 'Application not found or not installable' });
+    const installation = await prisma.botInstallation.upsert({
+      where: { applicationId_serverId: { applicationId: app.id, serverId: req.params.serverId } },
+      update: { permissions: input.permissions, installedById: req.userId! },
+      create: { applicationId: app.id, serverId: req.params.serverId, installedById: req.userId!, permissions: input.permissions },
+    });
+    return res.status(201).json(installation);
+  } catch (error) {
+    if (sendValidationError(error, res)) return;
+    return res.status(500).json({ error: 'Failed to install bot' });
+  }
+});
+
+featureRouter.delete('/servers/:serverId/bot-installations/:applicationId', authenticate, async (req: AuthRequest, res: Response) => {
+  if (!(await hasServerPermission(req.userId!, req.params.serverId, 'manage_server'))) return res.status(403).json({ error: 'Manage Server permission required' });
+  const result = await prisma.botInstallation.deleteMany({
+    where: { serverId: req.params.serverId, applicationId: req.params.applicationId },
+  });
+  return res.json({ success: result.count === 1 });
+});

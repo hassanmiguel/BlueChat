@@ -316,6 +316,7 @@ serverRouter.patch('/:id/roles/:roleId', authenticate, requireServerPermission('
 
 serverRouter.delete('/:id/roles/:roleId', authenticate, requireServerPermission('manage_roles'), async (req: AuthRequest, res: Response) => {
   try {
+    if (!(await canManageRole(req.userId!, req.params.roleId, req.params.id))) return res.status(403).json({ error: 'You cannot delete a role at or above your highest role' });
     await prisma.role.delete({ where: { id: req.params.roleId, serverId: req.params.id } });
     await logAudit(req.params.id, req.userId!, 'ROLE_DELETE', req.params.roleId);
     res.json({ success: true });
@@ -326,6 +327,10 @@ serverRouter.delete('/:id/roles/:roleId', authenticate, requireServerPermission(
 
 serverRouter.post('/:id/roles/:roleId/members/:userId', authenticate, requireServerPermission('manage_roles'), async (req: AuthRequest, res: Response) => {
   try {
+    if (!(await canManageRole(req.userId!, req.params.roleId, req.params.id))) return res.status(403).json({ error: 'You cannot assign a role at or above your highest role' });
+    if (!(await canManageMember(req.userId!, req.params.userId, req.params.id))) return res.status(403).json({ error: 'You cannot manage this member' });
+    const role = await prisma.role.findFirst({ where: { id: req.params.roleId, serverId: req.params.id }, select: { id: true } });
+    if (!role) return res.status(404).json({ error: 'Role not found in this server' });
     const member = await prisma.serverMember.findUnique({
       where: { userId_serverId: { userId: req.params.userId, serverId: req.params.id } },
       select: { id: true },
@@ -345,6 +350,10 @@ serverRouter.post('/:id/roles/:roleId/members/:userId', authenticate, requireSer
 
 serverRouter.delete('/:id/roles/:roleId/members/:userId', authenticate, requireServerPermission('manage_roles'), async (req: AuthRequest, res: Response) => {
   try {
+    if (!(await canManageRole(req.userId!, req.params.roleId, req.params.id))) return res.status(403).json({ error: 'You cannot remove a role at or above your highest role' });
+    if (!(await canManageMember(req.userId!, req.params.userId, req.params.id))) return res.status(403).json({ error: 'You cannot manage this member' });
+    const role = await prisma.role.findFirst({ where: { id: req.params.roleId, serverId: req.params.id }, select: { id: true } });
+    if (!role) return res.status(404).json({ error: 'Role not found in this server' });
     const member = await prisma.serverMember.findUnique({
       where: { userId_serverId: { userId: req.params.userId, serverId: req.params.id } },
       select: { id: true },

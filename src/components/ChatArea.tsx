@@ -571,9 +571,9 @@ function MessageRow({ message, isCurrentUser, showAvatar, onReply, onEdit, onDel
                 onClick={() => openProfile(message.author.id)}
                 className="font-medium text-white hover:underline cursor-pointer"
               >
-                {message.botApplication?.name || message.author.username}
+                {message.botApplication?.name || message.webhookName || message.author.username}
               </span>
-              {message.botApplication && <span className="rounded bg-dc-brand px-1 py-0.5 text-[9px] font-bold text-white">BOT</span>}
+              {(message.botApplication || message.webhookName) && <span className="rounded bg-dc-brand px-1 py-0.5 text-[9px] font-bold text-white">{message.botApplication ? 'BOT' : 'WEBHOOK'}</span>}
               <span className="text-xs text-dc-text-muted">
                 {formatTime(message.timestamp)}
               </span>

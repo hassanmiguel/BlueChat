@@ -1,6 +1,7 @@
 import type { Server as SocketServer } from 'socket.io';
 import { prisma } from '../middleware/auth.js';
 import { hasChannelPermission, hasTimeout, isServerMember } from '../middleware/authz.js';
+import { getAutoModViolation } from '../utils/automod.js';
 
 /**
  * Dispatch due messages with a short database lease so multiple server
@@ -59,13 +60,15 @@ export const dispatchScheduledMessages = async (io: SocketServer): Promise<void>
         }
       }
 
-      if (channel.server.autoModEnabled && channel.server.blockedWords.some((word) =>
-        word && item.content.toLocaleLowerCase().includes(word.toLocaleLowerCase()))) {
-        await prisma.scheduledMessage.update({
-          where: { id: item.id },
-          data: { cancelledAt: new Date(), processingAt: null },
-        });
-        continue;
+      if (channel.server.autoModEnabled) {
+        const violation = await getAutoModViolation(channel.serverId, channel.id, item.authorId, item.content, channel.server.blockedWords);
+        if (violation) {
+          await prisma.scheduledMessage.update({
+            where: { id: item.id },
+            data: { cancelledAt: new Date(), processingAt: null },
+          });
+          continue;
+        }
       }
 
       const message = await prisma.$transaction(async (tx) => {

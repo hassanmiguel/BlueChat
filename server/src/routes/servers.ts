@@ -284,6 +284,10 @@ serverRouter.post('/:id/roles', authenticate, requireServerManager, async (req: 
       color: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
       permissions: z.array(z.enum(PERMISSIONS)).optional(),
     }).parse(req.body);
+    if (permissions?.length) {
+      const allowed = await Promise.all(permissions.map((permission) => hasServerPermission(req.userId!, req.params.id, permission)));
+      if (allowed.some((value) => !value)) return res.status(403).json({ error: 'You cannot grant permissions you do not possess' });
+    }
 
     const role = await prisma.role.create({
       data: {

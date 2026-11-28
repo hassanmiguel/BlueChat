@@ -578,3 +578,55 @@ featureRouter.delete('/servers/:serverId/automod/rules/:ruleId', authenticate, a
   const result = await prisma.autoModRule.deleteMany({ where: { id: req.params.ruleId, serverId: req.params.serverId } });
   return res.json({ success: result.count === 1 });
 });
+
+
+// Opt-in, permission-scoped channel summarization through an OpenAI-compatible
+// endpoint (including local Ollama). Content is sent only for this request and
+// is not persisted by BlueChat.
+featureRouter.post('/servers/:serverId/ai/summarize', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const { channelId } = z.object({ channelId: z.string().min(1).max(64) }).parse(req.body);
+    if (!(await isServerMember(req.userId!, req.params.serverId))) return res.status(404).json({ error: 'Server not found' });
+    const settings = await prisma.serverAiSettings.findUnique({ where: { serverId: req.params.serverId } });
+    if (!settings?.enabled || !settings.allowSummary) return res.status(403).json({ error: 'AI summaries are not enabled for this server' });
+    const channel = await prisma.channel.findFirst({ where: { id: channelId, serverId: req.params.serverId }, select: { id: true } });
+    if (!channel || !(await canViewChannel(req.userId!, channelId)) || !(await hasChannelPermission(req.userId!, channelId, 'read_message_history'))) {
+      return res.status(403).json({ error: 'You cannot summarize this channel' });
+    }
+    if (!config.ai.model && !settings.model) return res.status(503).json({ error: 'No AI model is configured on this deployment' });
+    const messages = await prisma.message.findMany({
+      where: { channelId, deletedAt: null },
+      orderBy: { createdAt: 'desc' },
+      take: 100,
+      include: { author: { select: { username: true } } },
+    });
+    if (!messages.length) return res.json({ summary: 'There are no messages to summarize.' });
+
+    const endpoint = `${config.ai.baseUrl.replace(/\\/$/, '')}/chat/completions`;
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(config.ai.apiKey ? { Authorization: `Bearer ${config.ai.apiKey}` } : {}),
+      },
+      body: JSON.stringify({
+        model: settings.model || config.ai.model,
+        temperature: 0.2,
+        messages: [
+          { role: 'system', content: 'Summarize the provided authorized community discussion. Separate decisions, action items, and unresolved questions. Do not invent facts.' },
+          { role: 'user', content: messages.reverse().map((message) => `[${message.author.username}] ${message.content}`).join('\\n').slice(0, 24000) },
+        ],
+      }),
+      signal: AbortSignal.timeout(30_000),
+    });
+    if (!response.ok) return res.status(502).json({ error: 'Configured AI provider returned an error' });
+    const result: any = await response.json();
+    const summary = result?.choices?.[0]?.message?.content;
+    if (typeof summary !== 'string' || !summary.trim()) return res.status(502).json({ error: 'AI provider returned an empty summary' });
+    return res.json({ summary: summary.trim(), messageCount: messages.length, model: settings.model || config.ai.model });
+  } catch (error) {
+    if (sendValidationError(error, res)) return;
+    if (error instanceof Error && error.name === 'TimeoutError') return res.status(504).json({ error: 'AI provider timed out' });
+    return res.status(500).json({ error: 'Failed to summarize channel' });
+  }
+});

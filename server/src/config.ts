@@ -46,6 +46,11 @@ export const config = {
     webhookUrl: process.env.EMAIL_WEBHOOK_URL || '',
     from: process.env.EMAIL_FROM || 'no-reply@bluechat.local',
   },
+  livekit: {
+    url: process.env.LIVEKIT_URL || '',
+    apiKey: process.env.LIVEKIT_API_KEY || '',
+    apiSecret: process.env.LIVEKIT_API_SECRET || '',
+  },
   oauth: {
     google: {
       clientId: process.env.GOOGLE_CLIENT_ID || '',

@@ -60,7 +60,7 @@ webhookRouter.post('/:webhookId/messages', webhookLimiter, async (req, res: Resp
 
     const message = await prisma.$transaction(async (tx) => {
       const created = await tx.message.create({
-        data: { channelId: hook.channelId, authorId: hook.creatorId, content: input.content },
+        data: { channelId: hook.channelId, authorId: hook.creatorId, content: input.content, webhookName: input.username || hook.name },
         include: { author: { select: { id: true, username: true, discriminator: true, avatar: true, status: true } }, attachments: true, reactions: true },
       });
       await tx.webhookDelivery.update({

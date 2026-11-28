@@ -8,6 +8,7 @@ import {
   requireChannelAccess,
   requireChannelManager,
   hasServerPermission,
+  hasChannelPermission,
   canViewChannel,
   PERMISSIONS,
 } from '../middleware/authz.js';
@@ -177,10 +178,10 @@ channelRouter.post('/:id/messages', authenticate, requireChannelAccess, async (r
       const blocked = channel.server.blockedWords.find((word) => word && content.toLowerCase().includes(word.toLowerCase()));
       if (blocked) return res.status(400).json({ error: 'Message contains a blocked word' });
     }
-    if (!(await hasServerPermission(req.userId!, channel.serverId, 'send_messages'))) {
+    if (!(await hasChannelPermission(req.userId!, req.params.id, 'send_messages'))) {
       return res.status(403).json({ error: 'You cannot send messages in this channel' });
     }
-    if (attachments?.length && !(await hasServerPermission(req.userId!, channel.serverId, 'attach_files'))) {
+    if (attachments?.length && !(await hasChannelPermission(req.userId!, req.params.id, 'attach_files'))) {
       return res.status(403).json({ error: 'You cannot attach files in this channel' });
     }
     if (channel.slowMode) {

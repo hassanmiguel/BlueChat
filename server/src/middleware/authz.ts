@@ -163,6 +163,7 @@ export const hasChannelPermission = async (
   if (roles.some((role) => role.permissions.includes('*') || role.permissions.includes('administrator'))) {
     return true;
   }
+  if (!(await hasCompletedOnboarding(userId, channel.serverId))) return false;
 
   const roleIds = new Set(roles.map((role) => role.id));
   const applicable = channel.permissionOverrides.filter((override) => roleIds.has(override.roleId));

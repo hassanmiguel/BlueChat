@@ -79,7 +79,7 @@ export const dispatchScheduledMessages = async (io: SocketServer): Promise<void>
         });
         return created;
       });
-      io.to(channel.id).emit('message:new', message);
+      io.to(channel.id).emit('message:new', { channelId: channel.id, message });
     } catch (error) {
       // Release the lease for retry. The two-minute stale lease also recovers
       // a process crash between message creation and sentAt persistence.

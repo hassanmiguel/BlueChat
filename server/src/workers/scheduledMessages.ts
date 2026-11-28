@@ -1,6 +1,6 @@
 import type { Server as SocketServer } from 'socket.io';
 import { prisma } from '../middleware/auth.js';
-import { hasChannelPermission, isServerMember } from '../middleware/authz.js';
+import { hasChannelPermission, hasTimeout, isServerMember } from '../middleware/authz.js';
 
 /**
  * Dispatch due messages with a short database lease so multiple server
@@ -36,15 +36,27 @@ export const dispatchScheduledMessages = async (io: SocketServer): Promise<void>
     try {
       const channel = await prisma.channel.findUnique({
         where: { id: item.channelId },
-        select: { id: true, serverId: true, server: { select: { autoModEnabled: true, blockedWords: true } } },
+        select: { id: true, serverId: true, slowMode: true, server: { select: { autoModEnabled: true, blockedWords: true } } },
       });
       if (!channel || !(await isServerMember(item.authorId, channel.serverId)) ||
-          !(await hasChannelPermission(item.authorId, channel.id, 'send_messages'))) {
+          !(await hasChannelPermission(item.authorId, channel.id, 'send_messages')) ||
+          (await hasTimeout(item.authorId, channel.serverId))) {
         await prisma.scheduledMessage.update({
           where: { id: item.id },
           data: { cancelledAt: new Date(), processingAt: null },
         });
         continue;
+      }
+
+      if (channel.slowMode) {
+        const recent = await prisma.message.findFirst({
+          where: { channelId: channel.id, authorId: item.authorId, createdAt: { gte: new Date(Date.now() - channel.slowMode * 1000) } },
+          select: { id: true },
+        });
+        if (recent) {
+          await prisma.scheduledMessage.update({ where: { id: item.id }, data: { processingAt: null, scheduledAt: new Date(Date.now() + channel.slowMode * 1000) } });
+          continue;
+        }
       }
 
       if (channel.server.autoModEnabled && channel.server.blockedWords.some((word) =>

@@ -419,3 +419,104 @@ featureRouter.get('/subscriptions', authenticate, async (req: AuthRequest, res: 
   });
   return res.json(subscriptions);
 });
+
+
+// Forum channels use topic-style posts with tags and moderator lock/archive controls.
+featureRouter.get('/channels/:channelId/forum-posts', authenticate, async (req: AuthRequest, res: Response) => {
+  const channel = await prisma.channel.findUnique({ where: { id: req.params.channelId }, select: { type: true } });
+  if (!channel || channel.type !== 'FORUM' || !(await canViewChannel(req.userId!, req.params.channelId))) return res.status(404).json({ error: 'Forum not found' });
+  const limit = Math.min(Math.max(Number.parseInt(String(req.query.limit || '30'), 10) || 30, 1), 100);
+  const posts = await prisma.forumPost.findMany({
+    where: { channelId: req.params.channelId, isArchived: false },
+    orderBy: [{ isPinned: 'desc' }, { createdAt: 'desc' }],
+    take: limit,
+  });
+  return res.json(posts);
+});
+
+featureRouter.post('/channels/:channelId/forum-posts', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const input = z.object({
+      title: z.string().trim().min(1).max(150),
+      content: z.string().trim().min(1).max(12000),
+      tags: z.array(z.string().trim().min(1).max(32)).max(5).default([]),
+    }).parse(req.body);
+    const channel = await prisma.channel.findUnique({ where: { id: req.params.channelId }, select: { type: true } });
+    if (!channel || channel.type !== 'FORUM' || !(await canViewChannel(req.userId!, req.params.channelId))) return res.status(404).json({ error: 'Forum not found' });
+    if (!(await hasChannelPermission(req.userId!, req.params.channelId, 'send_messages'))) return res.status(403).json({ error: 'Cannot create forum posts here' });
+    const post = await prisma.forumPost.create({ data: { ...input, channelId: req.params.channelId, authorId: req.userId! } });
+    req.app.get('io')?.to(req.params.channelId).emit('forum:post-created', post);
+    return res.status(201).json(post);
+  } catch (error) {
+    if (sendValidationError(error, res)) return;
+    return res.status(500).json({ error: 'Failed to create forum post' });
+  }
+});
+
+featureRouter.patch('/forum-posts/:postId', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const input = z.object({
+      title: z.string().trim().min(1).max(150).optional(),
+      content: z.string().trim().min(1).max(12000).optional(),
+      tags: z.array(z.string().trim().min(1).max(32)).max(5).optional(),
+      isLocked: z.boolean().optional(),
+      isPinned: z.boolean().optional(),
+      isArchived: z.boolean().optional(),
+    }).strict().parse(req.body);
+    const post = await prisma.forumPost.findUnique({ where: { id: req.params.postId } });
+    if (!post || !(await canViewChannel(req.userId!, post.channelId))) return res.status(404).json({ error: 'Forum post not found' });
+    const moderator = await hasChannelPermission(req.userId!, post.channelId, 'manage_messages');
+    if (post.authorId !== req.userId && !moderator) return res.status(403).json({ error: 'Not allowed to edit this post' });
+    if (!moderator && (input.isLocked !== undefined || input.isPinned !== undefined || input.isArchived !== undefined)) return res.status(403).json({ error: 'Only moderators can change post moderation state' });
+    const updated = await prisma.forumPost.update({ where: { id: post.id }, data: input });
+    req.app.get('io')?.to(post.channelId).emit('forum:post-updated', updated);
+    return res.json(updated);
+  } catch (error) {
+    if (sendValidationError(error, res)) return;
+    return res.status(500).json({ error: 'Failed to update forum post' });
+  }
+});
+
+// Onboarding configuration is public to members; editing requires manage-onboarding.
+featureRouter.get('/servers/:serverId/onboarding', authenticate, async (req: AuthRequest, res: Response) => {
+  if (!(await isServerMember(req.userId!, req.params.serverId))) return res.status(404).json({ error: 'Server not found' });
+  const config = await prisma.serverOnboarding.findUnique({ where: { serverId: req.params.serverId } });
+  const screening = await prisma.serverMemberScreening.findUnique({ where: { serverId_userId: { serverId: req.params.serverId, userId: req.userId! } } });
+  return res.json({ config, acceptedRulesAt: screening?.acceptedAt || null });
+});
+
+featureRouter.put('/servers/:serverId/onboarding', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    if (!(await hasServerPermission(req.userId!, req.params.serverId, 'manage_onboarding'))) return res.status(403).json({ error: 'Manage Onboarding permission required' });
+    const input = z.object({
+      enabled: z.boolean(),
+      welcomeMessage: z.string().max(2000).optional().nullable(),
+      rules: z.array(z.string().trim().min(1).max(1000)).max(20),
+      defaultChannelIds: z.array(z.string().min(1).max(64)).max(20),
+      requireRuleAccept: z.boolean(),
+    }).parse(req.body);
+    const channels = await prisma.channel.findMany({ where: { id: { in: input.defaultChannelIds }, serverId: req.params.serverId }, select: { id: true } });
+    if (channels.length !== new Set(input.defaultChannelIds).size) return res.status(400).json({ error: 'Every default channel must belong to this server' });
+    const config = await prisma.serverOnboarding.upsert({
+      where: { serverId: req.params.serverId },
+      update: input,
+      create: { serverId: req.params.serverId, ...input },
+    });
+    return res.json(config);
+  } catch (error) {
+    if (sendValidationError(error, res)) return;
+    return res.status(500).json({ error: 'Failed to update onboarding' });
+  }
+});
+
+featureRouter.post('/servers/:serverId/screening/accept', authenticate, async (req: AuthRequest, res: Response) => {
+  if (!(await isServerMember(req.userId!, req.params.serverId))) return res.status(404).json({ error: 'Server not found' });
+  const config = await prisma.serverOnboarding.findUnique({ where: { serverId: req.params.serverId } });
+  if (!config?.enabled || !config.requireRuleAccept) return res.status(400).json({ error: 'This server does not require rule screening' });
+  const result = await prisma.serverMemberScreening.upsert({
+    where: { serverId_userId: { serverId: req.params.serverId, userId: req.userId! } },
+    update: { acceptedAt: new Date() },
+    create: { serverId: req.params.serverId, userId: req.userId!, acceptedAt: new Date() },
+  });
+  return res.json({ success: true, acceptedAt: result.acceptedAt });
+});

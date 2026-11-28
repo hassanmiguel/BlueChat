@@ -158,7 +158,7 @@ export const normalizeMessage = (raw: any, channelId?: string): Message => ({
       id: option.id,
       label: option.label,
       voteCount: option.votes?.length ?? option.voteCount ?? 0,
-      votedByMe: option.votedByMe,
+      votedByMe: option.votedByMe ?? option.votes?.some((vote: any) => vote.userId === useAuthStore.getState().user?.id),
       voters: option.voters ?? option.votes?.map((vote: any) => vote.userId),
     })),
   } : undefined,

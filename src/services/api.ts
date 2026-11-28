@@ -614,6 +614,25 @@ class ApiClient {
     return this.request(`/features/servers/${serverId}/ai-settings`, { method: 'PUT', body: JSON.stringify(settings) });
   }
 
+  async getAutoModSettings(serverId: string) {
+    return this.request(`/features/servers/${serverId}/automod`);
+  }
+
+  async updateAutoModSettings(serverId: string, enabled: boolean, blockedWords: string[]) {
+    return this.request(`/features/servers/${serverId}/automod`, { method: 'PUT', body: JSON.stringify({ enabled, blockedWords }) });
+  }
+
+  async createAutoModRule(serverId: string, rule: {
+    type: 'BLOCKED_PHRASE' | 'MAX_MENTIONS' | 'MAX_LINKS' | 'DUPLICATE_MESSAGE';
+    pattern?: string; threshold?: number; enabled?: boolean;
+  }) {
+    return this.request(`/features/servers/${serverId}/automod/rules`, { method: 'POST', body: JSON.stringify(rule) });
+  }
+
+  async deleteAutoModRule(serverId: string, ruleId: string) {
+    return this.request(`/features/servers/${serverId}/automod/rules/${ruleId}`, { method: 'DELETE' });
+  }
+
   async getSubscriptions() {
     return this.request('/features/subscriptions');
   }

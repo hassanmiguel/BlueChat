@@ -18,6 +18,8 @@ import { uploadRouter } from './routes/upload.js';
 import { moderationRouter } from './routes/moderation.js';
 import { notificationRouter } from './routes/notifications.js';
 import { searchRouter } from './routes/search.js';
+import { featureRouter } from './routes/features.js';
+import { dispatchScheduledMessages } from './workers/scheduledMessages.js';
 import { verifyCsrf } from './middleware/auth.js';
 import { setupSocketHandlers } from './socket/index.js';
 
@@ -98,8 +100,16 @@ app.use('/api/upload', uploadRouter);
 app.use('/api/notifications', notificationRouter);
 app.use('/api/moderation', moderationRouter);
 app.use('/api/search', searchRouter);
+app.use('/api/features', featureRouter);
 
 setupSocketHandlers(io);
+
+// Scheduled-message dispatcher. The database lease prevents overlapping
+// dispatch attempts across instances under normal operation.
+const scheduledDispatchTimer = setInterval(() => {
+  void dispatchScheduledMessages(io).catch((error) => console.error('Scheduled message worker error:', error));
+}, 10_000);
+scheduledDispatchTimer.unref?.();
 app.set('io', io);
 
 app.use((_req, res) => {

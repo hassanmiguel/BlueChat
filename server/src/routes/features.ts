@@ -98,7 +98,7 @@ featureRouter.post('/polls/:pollId/votes', authenticate, async (req: AuthRequest
         });
       }
     });
-    req.app.get('io')?.to(poll.channelId).emit('poll:vote', { pollId: poll.id });
+    req.app.get('io')?.to(poll.channelId).emit('poll:vote', { pollId: poll.id, channelId: poll.channelId });
     return res.json({ success: true });
   } catch (error) {
     if (sendValidationError(error, res)) return;
@@ -111,7 +111,7 @@ featureRouter.post('/polls/:pollId/close', authenticate, async (req: AuthRequest
   if (!poll) return res.status(404).json({ error: 'Poll not found' });
   if (poll.createdById !== req.userId && !(await canManageChannel(req.userId!, poll.channelId))) return res.status(403).json({ error: 'Not allowed to close this poll' });
   const updated = await prisma.poll.update({ where: { id: poll.id }, data: { closedAt: new Date() } });
-  req.app.get('io')?.to(poll.channelId).emit('poll:closed', { pollId: poll.id, closedAt: updated.closedAt });
+  req.app.get('io')?.to(poll.channelId).emit('poll:closed', { pollId: poll.id, channelId: poll.channelId, closedAt: updated.closedAt });
   return res.json(updated);
 });
 

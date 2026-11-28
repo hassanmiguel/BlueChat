@@ -35,7 +35,7 @@ The requested instruction was to add upgrade features without running tests. Acc
 ### Developer platform and integrations
 - Bot application registration, community installation, scoped bot token issuance/revocation, bot token authentication, installation listing, and permission-checked channel message posting. Token plaintext is returned once; only hashes are stored.
 - Channel webhook creation/deletion/listing with one-time credentials.
-- Incoming webhook message endpoint with token + secret verification, rate limiting, and idempotency key support.
+- Incoming webhook message endpoint with token + secret verification, rate limiting, idempotency key support, and webhook display identity.
 - Optional AI server settings with opt-in summary/search/transcription flags and retention configuration.
 - Optional OpenAI-compatible channel summarization endpoint, including local Ollama-compatible base URLs. It checks server opt-in and channel access; summary content is not persisted by BlueChat.
 - LiveKit SFU token endpoint with channel visibility, connect, and speak permission checks.

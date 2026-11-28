@@ -125,9 +125,11 @@ function MainApp() {
     void loadRemoteNotifications();
     void (async () => {
       await hydrate();
-      const inviteMatch = window.location.pathname.match(/^\\/invite\\/([^/]+)\\/?$/);
-      if (inviteMatch) {
-        await useChatStore.getState().joinServer(decodeURIComponent(inviteMatch[1]));
+      const invitePrefix = '/invite/';
+      const invitePath = window.location.pathname.startsWith(invitePrefix) ? window.location.pathname.slice(invitePrefix.length) : '';
+      const inviteCode = invitePath.endsWith('/') ? invitePath.slice(0, -1) : invitePath;
+      if (inviteCode) {
+        await useChatStore.getState().joinServer(decodeURIComponent(inviteCode));
         window.history.replaceState({}, document.title, '/');
       }
     })();

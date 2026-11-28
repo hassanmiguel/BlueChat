@@ -1,4 +1,5 @@
 import { Router, Response } from 'express';
+import { randomBytes } from 'node:crypto';
 import { z } from 'zod';
 import { prisma, authenticate, AuthRequest } from '../middleware/auth.js';
 import {
@@ -164,21 +165,46 @@ serverRouter.post('/join', authenticate, async (req: AuthRequest, res: Response)
   try {
     const { inviteCode } = z.object({ inviteCode: z.string().trim().min(1).max(128) }).parse(req.body);
 
-    const server = await prisma.server.findUnique({
-      where: { inviteCode },
-      include: serverInclude,
+    const invite = await prisma.serverInvite.findUnique({ where: { code: inviteCode } });
+    const legacyServer = invite ? null : await prisma.server.findUnique({ where: { inviteCode }, select: { id: true } });
+    const serverId = invite?.serverId || legacyServer?.id;
+    if (!serverId) return res.status(404).json({ error: 'Invalid invite code' });
+    if (invite && invite.expiresAt && invite.expiresAt <= new Date()) return res.status(410).json({ error: 'Invite has expired' });
+    if (invite && invite.maxUses !== null && invite.uses >= invite.maxUses) return res.status(410).json({ error: 'Invite has reached its use limit' });
+
+    const server = await prisma.server.findUnique({ where: { id: serverId }, include: serverInclude });
+    if (!server) return res.status(404).json({ error: 'Server not found' });
+    const activeBan = await prisma.ban.findFirst({
+      where: { serverId, userId: req.userId!, OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }] },
     });
-    if (!server) return res.status(404).json({ error: 'Invalid invite code' });
+    if (activeBan) return res.status(403).json({ error: 'You are banned from this server' });
 
     const existingMember = await prisma.serverMember.findUnique({
-      where: { userId_serverId: { userId: req.userId!, serverId: server.id } },
+      where: { userId_serverId: { userId: req.userId!, serverId } },
     });
     if (existingMember) return res.json(server);
 
-    await prisma.serverMember.create({
-      data: { userId: req.userId!, serverId: server.id },
-    });
-
+    try {
+      await prisma.$transaction(async (tx) => {
+        if (invite) {
+          const consumed = await tx.serverInvite.updateMany({
+            where: {
+              id: invite.id,
+              AND: [
+                { OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }] },
+                { OR: [{ maxUses: null }, { uses: { lt: invite.maxUses ?? 0 } }] },
+              ],
+            },
+            data: { uses: { increment: 1 } },
+          });
+          if (consumed.count !== 1) throw new Error('INVITE_UNAVAILABLE');
+        }
+        await tx.serverMember.create({ data: { userId: req.userId!, serverId } });
+      });
+    } catch (error) {
+      if (error instanceof Error && error.message === 'INVITE_UNAVAILABLE') return res.status(410).json({ error: 'Invite is no longer available' });
+      throw error;
+    }
     res.json(server);
   } catch (error) {
     if (zodError(error, res)) return;
@@ -323,4 +349,45 @@ serverRouter.get('/:id/audit-log', authenticate, requireServerManager, async (re
   } catch (error) {
     res.status(500).json({ error: 'Failed to get audit log' });
   }
+});
+
+
+// Advanced, expiring, use-limited invite management.
+serverRouter.get('/:id/invites', authenticate, requireServerPermission('manage_invites'), async (req: AuthRequest, res: Response) => {
+  const invites = await prisma.serverInvite.findMany({
+    where: { serverId: req.params.id },
+    orderBy: { createdAt: 'desc' },
+  });
+  return res.json(invites);
+});
+
+serverRouter.post('/:id/invites', authenticate, requireServerPermission('manage_invites'), async (req: AuthRequest, res: Response) => {
+  try {
+    const input = z.object({
+      maxUses: z.number().int().min(1).max(100000).optional().nullable(),
+      expiresInSeconds: z.number().int().min(60).max(365 * 24 * 60 * 60).optional(),
+    }).strict().parse(req.body || {});
+    const server = await prisma.server.findUnique({ where: { id: req.params.id }, select: { id: true } });
+    if (!server) return res.status(404).json({ error: 'Server not found' });
+    const invite = await prisma.serverInvite.create({
+      data: {
+        serverId: server.id,
+        creatorId: req.userId!,
+        code: randomBytes(18).toString('base64url'),
+        maxUses: input.maxUses ?? null,
+        expiresAt: input.expiresInSeconds ? new Date(Date.now() + input.expiresInSeconds * 1000) : null,
+      },
+    });
+    await logAudit(server.id, req.userId!, 'INVITE_CREATE', invite.id, { maxUses: invite.maxUses, expiresAt: invite.expiresAt });
+    return res.status(201).json(invite);
+  } catch (error) {
+    if (zodError(error, res)) return;
+    return res.status(500).json({ error: 'Failed to create invite' });
+  }
+});
+
+serverRouter.delete('/:id/invites/:inviteId', authenticate, requireServerPermission('manage_invites'), async (req: AuthRequest, res: Response) => {
+  const result = await prisma.serverInvite.deleteMany({ where: { id: req.params.inviteId, serverId: req.params.id } });
+  if (result.count) await logAudit(req.params.id, req.userId!, 'INVITE_DELETE', req.params.inviteId);
+  return res.json({ success: result.count === 1 });
 });

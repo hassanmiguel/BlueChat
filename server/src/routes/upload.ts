@@ -111,7 +111,7 @@ uploadRouter.get('/private/:id', authenticate, async (req: AuthRequest, res: Res
     const url = `/api/upload/private/${item.id}`;
     if (!allowed) {
       const attachment = await prisma.attachment.findFirst({
-        where: { url },
+        where: { url: { endsWith: url } },
         include: { message: { select: { channelId: true } } },
       });
       if (attachment) allowed = await canViewChannel(req.userId!, attachment.message.channelId);
@@ -177,7 +177,7 @@ uploadRouter.post('/', authenticate, uploadLimiter, async (req: AuthRequest, res
         });
       } catch (error) {
         if (fs.existsSync(destination)) fs.unlinkSync(destination);
-        throw error;
+        return res.status(500).json({ error: 'Could not store private upload' });
       }
       return res.status(201).json({
         url: `${base}/api/upload/private/${id}`,

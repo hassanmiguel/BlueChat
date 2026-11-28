@@ -21,6 +21,8 @@ export default function CommunityHubPage() {
   const [startsAt, setStartsAt] = useState('');
   const [appName, setAppName] = useState('');
   const [token, setToken] = useState('');
+  const [installAppId, setInstallAppId] = useState('');
+  const [installations, setInstallations] = useState<any[]>([]);
   const [summary, setSummary] = useState('');
   const [summarizing, setSummarizing] = useState(false);
 
@@ -38,7 +40,12 @@ export default function CommunityHubPage() {
     } else if (tab === 'scheduled') {
       response = await api.getScheduledMessages();
     } else {
-      response = await api.getBotApplications();
+      const [applications, installed] = await Promise.all([
+        api.getBotApplications(),
+        activeServerId ? api.getBotInstallations(activeServerId) : Promise.resolve({ success: true, data: [] } as any),
+      ]);
+      response = applications;
+      if (installed.success) setInstallations(Array.isArray(installed.data) ? installed.data : []);
     }
     if (response.success) {
       setItems(Array.isArray(response.data) ? response.data : []);
@@ -79,6 +86,15 @@ export default function CommunityHubPage() {
     setBusy(false);
     if (!response.success) return setError(response.error || 'Could not create application.');
     setAppName(''); setNotice('Developer application created.'); void load();
+  };
+
+  const installApplication = async () => {
+    if (!activeServerId || !installAppId.trim()) return;
+    setBusy(true);
+    const response = await api.installBot(activeServerId, installAppId.trim());
+    setBusy(false);
+    if (!response.success) return setError(response.error || 'Could not install application. Check Manage Server permission and application visibility.');
+    setInstallAppId(''); setNotice('Bot installed in this server.'); void load();
   };
 
   const issueToken = async (applicationId: string) => {
@@ -172,6 +188,7 @@ export default function CommunityHubPage() {
           {tab === 'developers' && (
             <>
               <div className="rounded-xl border border-dc-divider p-4 space-y-3"><h2 className="font-semibold">Create a bot application</h2><div className="flex gap-2"><input value={appName} onChange={(e) => setAppName(e.target.value)} placeholder="Application name" className="flex-1 min-w-0 rounded-lg bg-dc-channel border border-dc-divider p-3 text-sm" /><button disabled={busy || !appName.trim()} onClick={() => void createApplication()} className="rounded-lg bg-dc-brand text-white px-4 text-sm disabled:opacity-50">Create</button></div><p className="text-xs text-dc-text-muted">Tokens are stored as hashes and displayed only once. Never share them.</p></div>
+              {activeServerId && <div className="rounded-xl border border-dc-divider p-4 space-y-2"><h3 className="font-semibold text-sm">Install an application in this server</h3><div className="flex gap-2"><input value={installAppId} onChange={(e) => setInstallAppId(e.target.value)} placeholder="Application ID" className="flex-1 min-w-0 rounded-lg bg-dc-channel border border-dc-divider p-2 text-xs" /><button disabled={busy || !installAppId.trim()} onClick={() => void installApplication()} className="rounded-lg bg-dc-brand px-3 py-2 text-xs text-white disabled:opacity-50">Install</button></div>{installations.map((installation) => <div key={installation.id} className="flex items-center justify-between text-xs"><span>{installation.applicationId} · {installation.permissions.join(', ')}</span><button onClick={async () => { const response = await api.uninstallBot(activeServerId, installation.applicationId); if (response.success) void load(); }} className="text-red-300">Uninstall</button></div>)}</div>}
               {items.map((app) => <article key={app.id} className="rounded-xl border border-dc-divider p-4 flex items-center justify-between gap-3"><div><h3 className="font-semibold">{app.name}</h3><p className="text-xs text-dc-text-muted">{app.tokens?.filter((t: any) => !t.revokedAt).length || 0} active tokens</p></div><button disabled={busy} onClick={() => void issueToken(app.id)} className="rounded-lg bg-dc-hover px-3 py-2 text-xs">Issue token</button></article>)}
             </>
           )}

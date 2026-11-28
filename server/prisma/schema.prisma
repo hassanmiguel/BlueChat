@@ -273,6 +273,8 @@ model Message {
   mentions    Mention[]
   edits       MessageEdit[]
   poll        Poll?
+  botApplicationId String?
+  botApplication BotApplication? @relation(fields: [botApplicationId], references: [id], onDelete: SetNull)
 
   @@index([channelId, createdAt])
   @@map("messages")

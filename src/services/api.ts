@@ -573,6 +573,50 @@ class ApiClient {
   async cancelServerEvent(eventId: string) {
     return this.request(`/features/events/${eventId}`, { method: 'DELETE' });
   }
+
+  // Developer platform and privacy-first integrations.
+  async getBotApplications() {
+    return this.request('/features/developer/applications');
+  }
+
+  async createBotApplication(data: { name: string; description?: string; isPublic?: boolean }) {
+    return this.request('/features/developer/applications', { method: 'POST', body: JSON.stringify(data) });
+  }
+
+  async createBotToken(applicationId: string, scopes: string[], expiresAt?: string) {
+    return this.request(`/features/developer/applications/${applicationId}/tokens`, { method: 'POST', body: JSON.stringify({ scopes, expiresAt }) });
+  }
+
+  async revokeBotToken(applicationId: string, tokenId: string) {
+    return this.request(`/features/developer/applications/${applicationId}/tokens/${tokenId}`, { method: 'DELETE' });
+  }
+
+  async getServerWebhooks(serverId: string) {
+    return this.request(`/features/servers/${serverId}/webhooks`);
+  }
+
+  async createServerWebhook(serverId: string, channelId: string, name: string) {
+    return this.request(`/features/servers/${serverId}/webhooks`, { method: 'POST', body: JSON.stringify({ channelId, name }) });
+  }
+
+  async deleteServerWebhook(serverId: string, webhookId: string) {
+    return this.request(`/features/servers/${serverId}/webhooks/${webhookId}`, { method: 'DELETE' });
+  }
+
+  async getServerAiSettings(serverId: string) {
+    return this.request(`/features/servers/${serverId}/ai-settings`);
+  }
+
+  async updateServerAiSettings(serverId: string, settings: {
+    enabled: boolean; provider?: string | null; model?: string | null;
+    allowSummary: boolean; allowSearch: boolean; allowTranscription: boolean; retentionDays: number;
+  }) {
+    return this.request(`/features/servers/${serverId}/ai-settings`, { method: 'PUT', body: JSON.stringify(settings) });
+  }
+
+  async getSubscriptions() {
+    return this.request('/features/subscriptions');
+  }
 }
 
 export const api = new ApiClient(API_BASE);

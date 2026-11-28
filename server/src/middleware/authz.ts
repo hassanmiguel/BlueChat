@@ -296,14 +296,13 @@ export const requireMessageAuthorOrManager = async (req: AuthRequest, res: Respo
     select: { authorId: true, channelId: true },
   });
   if (!message) return res.status(404).json({ error: 'Message not found' });
+
+  if (!(await canViewChannel(req.userId!, message.channelId))) {
+    return res.status(403).json({ error: 'You do not have access to this channel' });
+  }
   if (message.authorId === req.userId) return next();
 
-  const channel = await prisma.channel.findUnique({
-    where: { id: message.channelId },
-    select: { serverId: true },
-  });
-  if (channel && (await hasChannelPermission(req.userId!, message.channelId, 'manage_messages'))) return next();
-
+  if (await hasChannelPermission(req.userId!, message.channelId, 'manage_messages')) return next();
   return res.status(403).json({ error: 'Not authorized to modify this message' });
 };
 

@@ -21,6 +21,7 @@ import { searchRouter } from './routes/search.js';
 import { featureRouter } from './routes/features.js';
 import { dispatchScheduledMessages } from './workers/scheduledMessages.js';
 import { voiceRouter } from './routes/voice.js';
+import { webhookRouter } from './routes/webhooks.js';
 import { verifyCsrf } from './middleware/auth.js';
 import { setupSocketHandlers } from './socket/index.js';
 
@@ -77,6 +78,8 @@ app.use('/api/auth/login', authLimiter);
 app.use('/api/auth/register', authLimiter);
 app.use('/api/auth/password', authLimiter);
 app.use('/api/auth/oauth', authLimiter);
+
+app.use('/api/webhooks', webhookRouter);
 
 app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });

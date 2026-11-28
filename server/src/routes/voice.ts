@@ -30,6 +30,13 @@ voiceRouter.post('/token', authenticate, async (req: AuthRequest, res: Response)
     if (!(await canViewChannel(req.userId!, channelId))) return res.status(403).json({ error: 'Channel access denied' });
     if (!(await hasChannelPermission(req.userId!, channelId, 'connect'))) return res.status(403).json({ error: 'Connect permission required' });
     if (publish && !(await hasChannelPermission(req.userId!, channelId, 'speak'))) return res.status(403).json({ error: 'Speak permission required' });
+    const canVideo = publish && await hasChannelPermission(req.userId!, channelId, 'video');
+    const canScreenShare = publish && await hasChannelPermission(req.userId!, channelId, 'screen_share');
+    const publishSources = [
+      ...(publish ? ['microphone'] : []),
+      ...(canVideo ? ['camera'] : []),
+      ...(canScreenShare ? ['screen_share', 'screen_share_audio'] : []),
+    ];
 
     const user = await prisma.user.findUnique({ where: { id: req.userId! }, select: { username: true } });
     if (!user) return res.status(401).json({ error: 'User not found' });
@@ -44,7 +51,8 @@ voiceRouter.post('/token', authenticate, async (req: AuthRequest, res: Response)
       video: {
         roomJoin: true,
         room: `bluechat-${channel.id}`,
-        canPublish: publish,
+        canPublish: publishSources.length > 0,
+        canPublishSources: publishSources,
         canSubscribe: true,
         canPublishData: true,
       },

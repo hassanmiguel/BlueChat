@@ -44,6 +44,12 @@ export default function ChatArea() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [currentMessages.length]);
 
+  useEffect(() => {
+    if (view !== 'server' || !activeChannelId || !currentMessages.length) return;
+    const latest = currentMessages[currentMessages.length - 1];
+    void api.updateChannelReadState(activeChannelId, latest.id);
+  }, [view, activeChannelId, currentMessages.length]);
+
   const notifyTyping = (value: string) => {
     const target = activeChannelId || activeDmId;
     if (!target) return;

@@ -20,6 +20,22 @@ export const PERMISSIONS = [
   'speak',
   'video',
   'screen_share',
+  'view_channel',
+  'read_message_history',
+  'manage_events',
+  'manage_webhooks',
+  'manage_emojis',
+  'manage_stickers',
+  'view_audit_log',
+  'manage_nicknames',
+  'create_invites',
+  'manage_onboarding',
+  'moderate_members',
+  'use_external_emojis',
+  'use_external_stickers',
+  'create_polls',
+  'create_threads',
+  'send_voice_messages',
 ] as const;
 
 export type Permission = typeof PERMISSIONS[number];

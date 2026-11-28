@@ -256,6 +256,16 @@ function MainApp() {
     return () => offNotification();
   }, [pushRemoteNotification, addToast]);
 
+  useEffect(() => {
+    const refreshChannel = (payload: any) => {
+      if (payload?.channelId) void useChatStore.getState().loadMessages(payload.channelId);
+    };
+    const offCreated = socketService.on('poll:create', refreshChannel);
+    const offVote = socketService.on('poll:vote', refreshChannel);
+    const offClosed = socketService.on('poll:closed', refreshChannel);
+    return () => { offCreated(); offVote(); offClosed(); };
+  }, []);
+
   return (
     <motion.div
       initial={{ opacity: 0 }}

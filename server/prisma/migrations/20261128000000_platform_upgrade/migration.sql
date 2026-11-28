@@ -248,3 +248,7 @@ CREATE TABLE "private_uploads" (
 );
 CREATE UNIQUE INDEX "private_uploads_storageKey_key" ON "private_uploads"("storageKey");
 CREATE INDEX "private_uploads_ownerId_createdAt_idx" ON "private_uploads"("ownerId", "createdAt");
+
+ALTER TABLE "polls"
+  ADD CONSTRAINT "polls_messageId_fkey" FOREIGN KEY ("messageId") REFERENCES "messages"("id") ON DELETE CASCADE ON UPDATE CASCADE,
+  ADD CONSTRAINT "polls_channelId_fkey" FOREIGN KEY ("channelId") REFERENCES "channels"("id") ON DELETE CASCADE ON UPDATE CASCADE;

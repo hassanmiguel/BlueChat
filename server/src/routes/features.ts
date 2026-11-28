@@ -520,3 +520,61 @@ featureRouter.post('/servers/:serverId/screening/accept', authenticate, async (r
   });
   return res.json({ success: true, acceptedAt: result.acceptedAt });
 });
+
+
+// AutoMod configuration. Rules are evaluated server-side on live and scheduled posts.
+featureRouter.get('/servers/:serverId/automod', authenticate, async (req: AuthRequest, res: Response) => {
+  if (!(await hasServerPermission(req.userId!, req.params.serverId, 'manage_server'))) return res.status(403).json({ error: 'Manage Server permission required' });
+  const [server, rules] = await Promise.all([
+    prisma.server.findUnique({ where: { id: req.params.serverId }, select: { autoModEnabled: true, blockedWords: true } }),
+    prisma.autoModRule.findMany({ where: { serverId: req.params.serverId }, orderBy: { createdAt: 'desc' } }),
+  ]);
+  if (!server) return res.status(404).json({ error: 'Server not found' });
+  return res.json({ ...server, rules });
+});
+
+featureRouter.put('/servers/:serverId/automod', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    if (!(await hasServerPermission(req.userId!, req.params.serverId, 'manage_server'))) return res.status(403).json({ error: 'Manage Server permission required' });
+    const input = z.object({
+      enabled: z.boolean(),
+      blockedWords: z.array(z.string().trim().min(1).max(100)).max(200),
+    }).parse(req.body);
+    const server = await prisma.server.update({
+      where: { id: req.params.serverId },
+      data: { autoModEnabled: input.enabled, blockedWords: [...new Set(input.blockedWords.map((word) => word.toLocaleLowerCase()))] },
+      select: { id: true, autoModEnabled: true, blockedWords: true },
+    });
+    return res.json(server);
+  } catch (error) {
+    if (sendValidationError(error, res)) return;
+    return res.status(500).json({ error: 'Failed to update AutoMod settings' });
+  }
+});
+
+featureRouter.post('/servers/:serverId/automod/rules', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    if (!(await hasServerPermission(req.userId!, req.params.serverId, 'manage_server'))) return res.status(403).json({ error: 'Manage Server permission required' });
+    const input = z.object({
+      type: z.enum(['BLOCKED_PHRASE', 'MAX_MENTIONS', 'MAX_LINKS', 'DUPLICATE_MESSAGE']),
+      pattern: z.string().trim().min(1).max(200).optional(),
+      threshold: z.number().int().min(1).max(50).default(5),
+      enabled: z.boolean().default(true),
+    }).parse(req.body);
+    if (input.type === 'BLOCKED_PHRASE' && !input.pattern) return res.status(400).json({ error: 'A blocked phrase is required' });
+    if (input.type !== 'BLOCKED_PHRASE' && input.pattern) return res.status(400).json({ error: 'This rule type does not accept a pattern' });
+    const rule = await prisma.autoModRule.create({
+      data: { serverId: req.params.serverId, ...input, action: 'BLOCK' },
+    });
+    return res.status(201).json(rule);
+  } catch (error) {
+    if (sendValidationError(error, res)) return;
+    return res.status(500).json({ error: 'Failed to create AutoMod rule' });
+  }
+});
+
+featureRouter.delete('/servers/:serverId/automod/rules/:ruleId', authenticate, async (req: AuthRequest, res: Response) => {
+  if (!(await hasServerPermission(req.userId!, req.params.serverId, 'manage_server'))) return res.status(403).json({ error: 'Manage Server permission required' });
+  const result = await prisma.autoModRule.deleteMany({ where: { id: req.params.ruleId, serverId: req.params.serverId } });
+  return res.json({ success: result.count === 1 });
+});

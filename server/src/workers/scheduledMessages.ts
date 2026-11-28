@@ -56,13 +56,16 @@ export const dispatchScheduledMessages = async (io: SocketServer): Promise<void>
         continue;
       }
 
-      const message = await prisma.message.create({
-        data: { channelId: channel.id, authorId: item.authorId, content: item.content },
-        include: { author: { select: { id: true, username: true, discriminator: true, avatar: true, status: true } }, attachments: true, reactions: true },
-      });
-      await prisma.scheduledMessage.update({
-        where: { id: item.id },
-        data: { sentAt: new Date(), processingAt: null },
+      const message = await prisma.$transaction(async (tx) => {
+        const created = await tx.message.create({
+          data: { channelId: channel.id, authorId: item.authorId, content: item.content },
+          include: { author: { select: { id: true, username: true, discriminator: true, avatar: true, status: true } }, attachments: true, reactions: true },
+        });
+        await tx.scheduledMessage.update({
+          where: { id: item.id },
+          data: { sentAt: new Date(), processingAt: null },
+        });
+        return created;
       });
       io.to(channel.id).emit('message:new', message);
     } catch (error) {

@@ -144,6 +144,15 @@ channelRouter.get('/:id/messages', authenticate, requireChannelAccess, async (re
           return acc;
         }, {}),
       ),
+      poll: msg.poll ? {
+        ...msg.poll,
+        options: msg.poll.options.map(({ votes, ...option }) => ({
+          ...option,
+          voteCount: votes.length,
+          votedByMe: votes.some((vote) => vote.userId === req.userId),
+          voters: msg.poll!.anonymous ? undefined : votes.map((vote) => vote.userId),
+        })),
+      } : null,
     }));
 
     res.json(transformed.reverse());

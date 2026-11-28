@@ -662,6 +662,21 @@ class ApiClient {
       method: 'POST', body: JSON.stringify({ channelId, publish }),
     });
   }
+
+  async getForumPosts(channelId: string, limit = 30) {
+    return this.request(`/features/channels/${channelId}/forum-posts?limit=${limit}`);
+  }
+
+  async createForumPost(channelId: string, data: { title: string; content: string; tags?: string[] }) {
+    return this.request(`/features/channels/${channelId}/forum-posts`, { method: 'POST', body: JSON.stringify(data) });
+  }
+
+  async updateForumPost(postId: string, updates: {
+    title?: string; content?: string; tags?: string[];
+    isLocked?: boolean; isPinned?: boolean; isArchived?: boolean;
+  }) {
+    return this.request(`/features/forum-posts/${postId}`, { method: 'PATCH', body: JSON.stringify(updates) });
+  }
 }
 
 export const api = new ApiClient(API_BASE);

@@ -2,7 +2,7 @@ import { Server as SocketServer, Socket } from 'socket.io';
 import jwt from 'jsonwebtoken';
 import { config } from '../config.js';
 import { prisma } from '../middleware/auth.js';
-import { canViewChannel, hasChannelPermission, hasServerPermission, isServerMember } from '../middleware/authz.js';
+import { canViewChannel, hasChannelPermission, hasCompletedOnboarding, hasServerPermission, isServerMember } from '../middleware/authz.js';
 
 interface AuthenticatedSocket extends Socket {
   userId?: string;
@@ -250,7 +250,7 @@ export function setupSocketHandlers(io: SocketServer) {
     }));
 
     socket.on('server:join', safe(async (serverId: string) => {
-      if (typeof serverId === 'string' && (await isServerMember(userId, serverId))) {
+      if (typeof serverId === 'string' && (await isServerMember(userId, serverId)) && (await hasCompletedOnboarding(userId, serverId))) {
         socket.join(`server:${serverId}`);
       }
     }));

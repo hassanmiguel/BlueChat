@@ -4,12 +4,15 @@ import rateLimit from 'express-rate-limit';
 import crypto from 'crypto';
 import path from 'path';
 import fs from 'fs';
-import { authenticate, AuthRequest } from '../middleware/auth.js';
+import { authenticate, AuthRequest, prisma } from '../middleware/auth.js';
+import { canViewChannel } from '../middleware/authz.js';
 
 export const uploadRouter = Router();
 
 const uploadDir = path.resolve(process.cwd(), process.env.UPLOAD_DIR || './uploads');
+const privateUploadDir = path.resolve(process.cwd(), process.env.PRIVATE_UPLOAD_DIR || './private-uploads');
 fs.mkdirSync(uploadDir, { recursive: true });
+fs.mkdirSync(privateUploadDir, { recursive: true });
 
 const allowedTypes: Record<string, string[]> = {
   'image/jpeg': ['jpg', 'jpeg'],
@@ -98,7 +101,48 @@ const uploadLimiter = rateLimit({
   message: { error: 'Too many uploads, try again later' },
 });
 
-uploadRouter.post('/', authenticate, uploadLimiter, (req: AuthRequest, res: Response) => {
+
+uploadRouter.get('/private/:id', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const item = await prisma.privateUpload.findUnique({ where: { id: req.params.id } });
+    if (!item) return res.status(404).json({ error: 'File not found' });
+
+    let allowed = item.ownerId === req.userId;
+    const url = `/api/upload/private/${item.id}`;
+    if (!allowed) {
+      const attachment = await prisma.attachment.findFirst({
+        where: { url },
+        include: { message: { select: { channelId: true } } },
+      });
+      if (attachment) allowed = await canViewChannel(req.userId!, attachment.message.channelId);
+    }
+    if (!allowed) {
+      const dmAttachment = await prisma.dmAttachment.findFirst({
+        where: { url },
+        include: { message: { select: { dmId: true } } },
+      });
+      if (dmAttachment) {
+        const participant = await prisma.directMessageParticipant.findUnique({
+          where: { dmId_userId: { dmId: dmAttachment.message.dmId, userId: req.userId! } },
+          select: { id: true },
+        });
+        allowed = Boolean(participant);
+      }
+    }
+    if (!allowed) return res.status(404).json({ error: 'File not found' });
+
+    const filePath = path.join(privateUploadDir, path.basename(item.storageKey));
+    if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'File not found' });
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Content-Type', item.mimeType);
+    res.setHeader('Content-Disposition', `inline; filename*=UTF-8''${encodeURIComponent(item.originalName)}`);
+    return res.sendFile(filePath);
+  } catch {
+    return res.status(500).json({ error: 'Failed to retrieve file' });
+  }
+});
+
+uploadRouter.post('/', authenticate, uploadLimiter, async (req: AuthRequest, res: Response) => {
   upload.single('file')(req, res, (error: any) => {
     if (error) {
       const message = error.code === 'LIMIT_FILE_SIZE'
@@ -114,11 +158,41 @@ uploadRouter.post('/', authenticate, uploadLimiter, (req: AuthRequest, res: Resp
     }
 
     const base = process.env.PUBLIC_URL || `${req.protocol}://${req.get('host')}`;
-    res.status(201).json({
+    const uploadField = String(req.get('X-Upload-Field') || 'file');
+    if (uploadField === 'file') {
+      const id = crypto.randomUUID();
+      const storageKey = req.file.filename;
+      const destination = path.join(privateUploadDir, storageKey);
+      try {
+        fs.renameSync(req.file.path, destination);
+        await prisma.privateUpload.create({
+          data: {
+            id,
+            ownerId: req.userId!,
+            storageKey,
+            originalName: path.basename(req.file.originalname).slice(0, 255),
+            mimeType: req.file.mimetype,
+            size: req.file.size,
+          },
+        });
+      } catch (error) {
+        if (fs.existsSync(destination)) fs.unlinkSync(destination);
+        throw error;
+      }
+      return res.status(201).json({
+        url: `${base}/api/upload/private/${id}`,
+        type: req.file.mimetype,
+        size: req.file.size,
+        name: path.basename(req.file.originalname),
+        private: true,
+      });
+    }
+
+    return res.status(201).json({
       url: `${base}/uploads/${req.file.filename}`,
       type: req.file.mimetype,
       size: req.file.size,
-      name: req.file.originalname,
+      name: path.basename(req.file.originalname),
     });
   });
 });

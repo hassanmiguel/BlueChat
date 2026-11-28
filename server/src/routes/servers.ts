@@ -7,6 +7,9 @@ import {
   requireServerManager,
   requireServerOwner,
   requireServerPermission,
+  canManageMember,
+  canManageRole,
+  PERMISSIONS,
 } from '../middleware/authz.js';
 import { logAudit } from '../utils/audit.js';
 
@@ -280,12 +283,25 @@ serverRouter.post('/:id/roles', authenticate, requireServerManager, async (req: 
 
 serverRouter.patch('/:id/roles/:roleId', authenticate, requireServerPermission('manage_roles'), async (req: AuthRequest, res: Response) => {
   try {
+    if (!(await canManageRole(req.userId!, req.params.roleId, req.params.id))) return res.status(403).json({ error: 'You cannot manage a role at or above your highest role' });
     const updates = z.object({
       name: z.string().trim().min(1).max(50).optional(),
       color: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
-      permissions: z.array(z.string().max(64)).optional(),
+      permissions: z.array(z.enum(PERMISSIONS)).optional(),
       position: z.number().int().min(0).max(1000).optional(),
-    }).parse(req.body);
+    }).strict().parse(req.body);
+    if (updates.position !== undefined) {
+      const actorRole = await prisma.role.findFirst({
+        where: { serverId: req.params.id, members: { some: { member: { userId: req.userId! } } } },
+        orderBy: { position: 'desc' }, select: { position: true },
+      });
+      const server = await prisma.server.findUnique({ where: { id: req.params.id }, select: { ownerId: true } });
+      if (server?.ownerId !== req.userId && (!actorRole || updates.position >= actorRole.position)) return res.status(403).json({ error: 'You cannot move a role to or above your highest role' });
+    }
+    if (updates.permissions) {
+      const allowed = await Promise.all(updates.permissions.map((permission) => hasServerPermission(req.userId!, req.params.id, permission)));
+      if (allowed.some((value) => !value)) return res.status(403).json({ error: 'You cannot grant permissions you do not possess' });
+    }
     const role = await prisma.role.update({
       where: { id: req.params.roleId, serverId: req.params.id },
       data: updates,

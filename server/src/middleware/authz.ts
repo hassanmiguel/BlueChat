@@ -99,6 +99,24 @@ export const canViewChannel = async (userId: string, channelId: string): Promise
 
   const member = channel.server.members[0];
   if (!member) return false;
+
+  const onboarding = await prisma.serverOnboarding.findUnique({
+    where: { serverId: channel.server.members.length ? (await prisma.channel.findUnique({ where: { id: channelId }, select: { serverId: true } }))!.serverId : '' },
+    select: { enabled: true, requireRuleAccept: true },
+  });
+  if (onboarding?.enabled && onboarding.requireRuleAccept) {
+    const screening = await prisma.serverMemberScreening.findUnique({
+      where: {
+        serverId_userId: {
+          serverId: (await prisma.channel.findUnique({ where: { id: channelId }, select: { serverId: true } }))!.serverId,
+          userId,
+        },
+      },
+      select: { acceptedAt: true },
+    });
+    if (!screening?.acceptedAt) return false;
+  }
+
   const roleIds = new Set(member.roles.map((assignment) => assignment.roleId));
   return !channel.permissionOverrides.some(
     (override) => roleIds.has(override.roleId) && override.deny.includes('view_channel'),

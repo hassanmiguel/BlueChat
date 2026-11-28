@@ -617,6 +617,51 @@ class ApiClient {
   async getSubscriptions() {
     return this.request('/features/subscriptions');
   }
+
+  async getChannelPermissionOverrides(channelId: string) {
+    return this.request(`/channels/${channelId}/permissions`);
+  }
+
+  async setChannelPermissionOverride(channelId: string, roleId: string, allow: string[], deny: string[]) {
+    return this.request(`/channels/${channelId}/permissions/${roleId}`, { method: 'PUT', body: JSON.stringify({ allow, deny }) });
+  }
+
+  async deleteChannelPermissionOverride(channelId: string, roleId: string) {
+    return this.request(`/channels/${channelId}/permissions/${roleId}`, { method: 'DELETE' });
+  }
+
+  async getServerInvites(serverId: string) {
+    return this.request(`/servers/${serverId}/invites`);
+  }
+
+  async createServerInvite(serverId: string, options: { maxUses?: number | null; expiresInSeconds?: number } = {}) {
+    return this.request(`/servers/${serverId}/invites`, { method: 'POST', body: JSON.stringify(options) });
+  }
+
+  async deleteServerInvite(serverId: string, inviteId: string) {
+    return this.request(`/servers/${serverId}/invites/${inviteId}`, { method: 'DELETE' });
+  }
+
+  async getServerOnboarding(serverId: string) {
+    return this.request(`/features/servers/${serverId}/onboarding`);
+  }
+
+  async updateServerOnboarding(serverId: string, settings: {
+    enabled: boolean; welcomeMessage?: string | null; rules: string[];
+    defaultChannelIds: string[]; requireRuleAccept: boolean;
+  }) {
+    return this.request(`/features/servers/${serverId}/onboarding`, { method: 'PUT', body: JSON.stringify(settings) });
+  }
+
+  async acceptServerRules(serverId: string) {
+    return this.request(`/features/servers/${serverId}/screening/accept`, { method: 'POST' });
+  }
+
+  async createLiveKitToken(channelId: string, publish = true) {
+    return this.request<{ token: string; serverUrl: string; roomName: string; expiresIn: number }>('/voice/token', {
+      method: 'POST', body: JSON.stringify({ channelId, publish }),
+    });
+  }
 }
 
 export const api = new ApiClient(API_BASE);

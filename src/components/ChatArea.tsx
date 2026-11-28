@@ -516,7 +516,7 @@ interface MessageRowProps {
 }
 
 function MessageRow({ message, isCurrentUser, showAvatar, onReply, onEdit, onDelete, onPin, onReaction, showEmojiPicker, toggleEmojiPicker, quickEmojis, formatTime, editingId, editContent, setEditContent, handleEdit, setEditingId }: MessageRowProps) {
-  const { openProfile } = useUIStore();
+  const { openProfile, addNotification } = useUIStore();
   const markUnread = useChatStore((s) => s.markUnread);
   const { contextMenu, handleContextMenu, closeContextMenu } = useContextMenu();
   const statusColors: Record<string, string> = {
@@ -710,6 +710,7 @@ function MessageRow({ message, isCurrentUser, showAvatar, onReply, onEdit, onDel
           onAddReaction={toggleEmojiPicker}
           onCopyText={() => { void navigator.clipboard?.writeText(message.content); }}
           onPin={onPin}
+          onSave={() => { void api.saveMessage(message.id).then((response) => addNotification(response.success ? 'Message saved' : 'Could not save message', response.success ? 'Added to your saved messages.' : response.error || 'Please try again.', response.success ? 'success' : 'error')); }}
           onCopyLink={() => { void navigator.clipboard?.writeText(`${window.location.origin}/?message=${message.id}`); }}
           onMarkUnread={() => markUnread(message.channelId, message.id)}
           onEdit={isCurrentUser ? onEdit : undefined}

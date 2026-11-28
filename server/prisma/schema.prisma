@@ -835,3 +835,19 @@ model PrivateUpload {
   @@index([ownerId, createdAt])
   @@map("private_uploads")
 }
+
+
+model AutoModRule {
+  id        String   @id @default(cuid())
+  serverId  String
+  type      String
+  pattern   String?
+  threshold Int      @default(1)
+  enabled   Boolean  @default(true)
+  action    String   @default("BLOCK")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([serverId, enabled])
+  @@map("automod_rules")
+}

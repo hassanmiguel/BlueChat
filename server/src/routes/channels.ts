@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { prisma, authenticate, AuthRequest } from '../middleware/auth.js';
 import type { Server as SocketServer } from 'socket.io';
 import { notifyUser } from '../utils/notifications.js';
+import { getAutoModViolation } from '../utils/automod.js';
 import {
   isServerMember,
   requireChannelAccess,
@@ -176,8 +177,8 @@ channelRouter.post('/:id/messages', authenticate, requireChannelAccess, async (r
     });
     if (!channel) return res.status(404).json({ error: 'Channel not found' });
     if (channel.server.autoModEnabled) {
-      const blocked = channel.server.blockedWords.find((word) => word && content.toLowerCase().includes(word.toLowerCase()));
-      if (blocked) return res.status(400).json({ error: 'Message contains a blocked word' });
+      const violation = await getAutoModViolation(channel.serverId, req.params.id, req.userId!, content, channel.server.blockedWords);
+      if (violation) return res.status(400).json({ error: violation });
     }
     if (!(await hasChannelPermission(req.userId!, req.params.id, 'send_messages'))) {
       return res.status(403).json({ error: 'You cannot send messages in this channel' });

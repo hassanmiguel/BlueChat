@@ -147,6 +147,21 @@ export const normalizeMessage = (raw: any, channelId?: string): Message => ({
   replyTo: raw.replyTo ? normalizeMessage(raw.replyTo) : undefined,
   isPinned: Boolean(raw.isPinned),
   mentions: [],
+  poll: raw.poll ? {
+    id: raw.poll.id,
+    question: raw.poll.question,
+    multipleChoice: Boolean(raw.poll.multipleChoice),
+    anonymous: Boolean(raw.poll.anonymous),
+    closedAt: raw.poll.closedAt,
+    expiresAt: raw.poll.expiresAt,
+    options: (raw.poll.options || []).map((option: any) => ({
+      id: option.id,
+      label: option.label,
+      voteCount: option.votes?.length ?? option.voteCount ?? 0,
+      votedByMe: option.votedByMe,
+      voters: option.voters ?? option.votes?.map((vote: any) => vote.userId),
+    })),
+  } : undefined,
 });
 
 const normalizeDm = (raw: any): DirectMessage => ({

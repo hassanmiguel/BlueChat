@@ -20,6 +20,7 @@ import { notificationRouter } from './routes/notifications.js';
 import { searchRouter } from './routes/search.js';
 import { featureRouter } from './routes/features.js';
 import { dispatchScheduledMessages } from './workers/scheduledMessages.js';
+import { voiceRouter } from './routes/voice.js';
 import { verifyCsrf } from './middleware/auth.js';
 import { setupSocketHandlers } from './socket/index.js';
 
@@ -101,6 +102,7 @@ app.use('/api/notifications', notificationRouter);
 app.use('/api/moderation', moderationRouter);
 app.use('/api/search', searchRouter);
 app.use('/api/features', featureRouter);
+app.use('/api/voice', voiceRouter);
 
 setupSocketHandlers(io);
 

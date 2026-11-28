@@ -614,6 +614,12 @@ class ApiClient {
     return this.request(`/features/servers/${serverId}/ai-settings`, { method: 'PUT', body: JSON.stringify(settings) });
   }
 
+  async summarizeChannel(serverId: string, channelId: string) {
+    return this.request<{ summary: string; messageCount: number; model: string }>(`/features/servers/${serverId}/ai/summarize`, {
+      method: 'POST', body: JSON.stringify({ channelId }),
+    });
+  }
+
   async getAutoModSettings(serverId: string) {
     return this.request(`/features/servers/${serverId}/automod`);
   }

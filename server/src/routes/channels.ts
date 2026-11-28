@@ -272,6 +272,7 @@ channelRouter.post('/:id/messages', authenticate, requireChannelAccess, async (r
         select: { id: true, username: true },
       });
       for (const mentioned of mentionedUsers) {
+        if (!(await canViewChannel(mentioned.id, req.params.id))) continue;
         await notifyUser(io as SocketServer | undefined, {
           userId: mentioned.id,
           type: 'mention',

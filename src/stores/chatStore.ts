@@ -147,6 +147,7 @@ export const normalizeMessage = (raw: any, channelId?: string): Message => ({
   replyTo: raw.replyTo ? normalizeMessage(raw.replyTo) : undefined,
   isPinned: Boolean(raw.isPinned),
   mentions: [],
+  botApplication: raw.botApplication ? { id: raw.botApplication.id, name: raw.botApplication.name, avatar: mediaUrl(raw.botApplication.avatar) } : undefined,
   poll: raw.poll ? {
     id: raw.poll.id,
     question: raw.poll.question,

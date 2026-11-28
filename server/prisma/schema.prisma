@@ -817,3 +817,17 @@ model ServerMemberScreening {
   @@unique([serverId, userId])
   @@map("server_member_screening")
 }
+
+
+model PrivateUpload {
+  id           String   @id @default(cuid())
+  ownerId      String
+  storageKey   String   @unique
+  originalName String
+  mimeType     String
+  size         Int
+  createdAt    DateTime @default(now())
+
+  @@index([ownerId, createdAt])
+  @@map("private_uploads")
+}
